@@ -1,0 +1,220 @@
+# amonite CLI — thin driver over the flow. All heavy lifting is Nix.
+# Invoked via writeShellApplication (bash, set -euo pipefail provided).
+
+# Locate the amonite source tree: nix-built binary exports AMONITE_SHARE;
+# a plain git-clone run falls back to script-relative.
+share="${AMONITE_SHARE:-}"
+if [ -z "$share" ]; then
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  share="$(dirname "$script_dir")"
+fi
+
+usage() {
+  cat <<'EOF'
+amonite — spec-driven development compiled to Nix derivations
+
+Usage:
+  amonite init [dir]            scaffold a project (meta flake + flow files)
+  amonite task new <ID> <title> spawn an encapsulated task capsule
+  amonite verify <ID>|APP|all   build+verify a task/cluster, APP, or everything
+  amonite tui                   interactive derivation-hierarchy viewer
+  amonite generations           list APP generations (NixOS-style)
+  amonite rollback [N]          switch current APP to generation N (default: previous)
+  amonite status                flow artifacts, checklist state, current generation
+EOF
+}
+
+flake_ref() {
+  if [ -f .amonite/flake-ref ]; then
+    cat .amonite/flake-ref
+  else
+    echo "path:$share"
+  fi
+}
+
+# Commit ONLY the given paths with a flow message; the user's unrelated
+# changes are never swept in. Never fail the flow over git config.
+auto_commit() {
+  local msg="$1"; shift
+  git add -- "$@"
+  git commit -q -m "$msg" -- "$@" \
+    || echo "amonite: auto-commit failed (git identity?) — commit manually" >&2
+}
+
+# Reproducibility is not optional: make sure a flake has its lock,
+# and keep the lock in git.
+ensure_lock() {
+  local dir="$1"
+  if [ ! -f "$dir/flake.lock" ]; then
+    nix flake lock "path:$(cd "$dir" && pwd)"
+    auto_commit "amonite: lock $dir" "$dir/flake.lock"
+  fi
+}
+
+cmd_init() {
+  local dir="${1:-.}"
+  mkdir -p "$dir"
+  cd "$dir" || exit 1
+  if [ -f flake.nix ]; then
+    echo "amonite: flake.nix already exists here, refusing to overwrite" >&2
+    exit 1
+  fi
+
+  local ref="${AMONITE_FLAKE_REF:-path:$share}"
+  mkdir -p .amonite .claude/commands tasks
+
+  sed "s#github:thatbagu/amonite#$ref#" \
+    "$share/nix/templates/project/flake.nix" > flake.nix
+  cp "$share/nix/templates/project/clusters.nix" clusters.nix
+  for t in principles spec plan tasks; do
+    cp "$share/templates/$t.md" ".amonite/$t.md"
+  done
+  cp "$share"/commands/*.md .claude/commands/
+  echo "$ref" > .amonite/flake-ref
+  # Generations are machine-local GC roots; locks and everything else
+  # stay in git.
+  printf 'result\nresult-*\n.direnv/\n.amonite/generations/\n' > .gitignore
+
+  [ -d .git ] || git init -q
+  auto_commit "amonite: init project" \
+    flake.nix clusters.nix .gitignore .amonite .claude
+  ensure_lock .
+
+  echo "amonite: project initialised (flake ref: $ref)"
+  echo "flow: /amonite.principles → /amonite.specify → /amonite.plan → /amonite.tasks → /amonite.implement"
+}
+
+cmd_task_new() {
+  local id="${1:?usage: amonite task new <ID> <title>}"
+  local title="${2:?usage: amonite task new <ID> <title>}"
+  local dir="tasks/$id"
+  if [ -e "$dir" ]; then
+    echo "amonite: $dir already exists" >&2
+    exit 1
+  fi
+  mkdir -p "$dir"
+  local ref
+  ref="$(flake_ref)"
+  sed "s#github:thatbagu/amonite#$ref#" \
+    "$share/nix/templates/task/flake.nix" > "$dir/flake.nix"
+  sed -e "s/TXXX/$id/" -e "s/REPLACE: one-line outcome of this task/$title/" \
+    "$share/nix/templates/task/task.nix" > "$dir/task.nix"
+  auto_commit "amonite: spawn capsule $id — $title" "$dir"
+  ensure_lock "$dir"
+  echo "amonite: capsule $dir spawned — fill env + verify in task.nix"
+}
+
+cmd_verify() {
+  local target="${1:?usage: amonite verify <ID>|APP|all}"
+  case "$target" in
+    all)
+      exec nix flake check -L .
+      ;;
+    APP)
+      # Every verified APP build becomes a generation: a GC-rooted,
+      # immutable store path. `current` is just a pointer — rollback is
+      # a symlink flip, NixOS-style.
+      local gens=".amonite/generations"
+      mkdir -p "$gens"
+      local n=1
+      while [ -e "$gens/$n" ]; do n=$((n + 1)); done
+      nix build -L --out-link "$gens/$n" .#default
+      local out
+      out="$(readlink "$gens/$n")"
+      {
+        echo "store=$out"
+        echo "rev=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+        echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      } > "$gens/$n.meta"
+      ln -sfn "$n" "$gens/current"
+      echo "amonite: APP verified → generation $n → $out"
+      ;;
+    T*)
+      [ -d "tasks/$target" ] && ensure_lock "tasks/$target"
+      nix build -L --no-link ".#task-$target"
+      echo "amonite: task $target verified"
+      ;;
+    C*)
+      nix build -L --no-link ".#cluster-$target"
+      echo "amonite: cluster $target verified"
+      ;;
+    *)
+      echo "amonite: unknown target '$target'" >&2
+      exit 1
+      ;;
+  esac
+}
+
+cmd_generations() {
+  local gens=".amonite/generations"
+  if [ ! -d "$gens" ]; then
+    echo "amonite: no generations yet — run 'amonite verify APP' first" >&2
+    exit 1
+  fi
+  local current=""
+  [ -L "$gens/current" ] && current="$(readlink "$gens/current")"
+  local n
+  for n in $(find "$gens" -maxdepth 1 -name '[0-9]*' ! -name '*.meta' -exec basename {} \; | sort -n); do
+    local mark=" "
+    [ "$n" = "$current" ] && mark="*"
+    echo "$mark $n  $(tr '\n' ' ' < "$gens/$n.meta")"
+  done
+}
+
+cmd_rollback() {
+  local gens=".amonite/generations"
+  local current
+  current="$(readlink "$gens/current" 2>/dev/null)" \
+    || { echo "amonite: no current generation" >&2; exit 1; }
+  local target="${1:-$((current - 1))}"
+  if [ ! -e "$gens/$target" ]; then
+    echo "amonite: generation $target does not exist" >&2
+    exit 1
+  fi
+  ln -sfn "$target" "$gens/current"
+  echo "amonite: rolled back $current → $target ($(tr '\n' ' ' < "$gens/$target.meta"))"
+}
+
+cmd_status() {
+  echo "== flow artifacts =="
+  for t in principles spec plan tasks; do
+    local f=".amonite/$t.md"
+    if [ ! -f "$f" ]; then
+      echo "  $t: missing"
+    elif grep -q 'REPLACE\|NEEDS CLARIFICATION\|PROJECT / FEATURE NAME' "$f"; then
+      echo "  $t: draft (placeholders remain)"
+    else
+      echo "  $t: ready"
+    fi
+  done
+  echo "== tasks =="
+  if [ -f .amonite/tasks.md ]; then
+    grep -E '^\s*- \[[ x]\] T[0-9]+' .amonite/tasks.md || echo "  (none decomposed)"
+  fi
+  echo "== capsules =="
+  if [ -d tasks ]; then
+    find tasks -mindepth 1 -maxdepth 1 -type d | sed 's/^tasks\//  /'
+  fi
+  if [ -L .amonite/generations/current ]; then
+    echo "== APP =="
+    echo "  generation $(readlink .amonite/generations/current)"
+  fi
+}
+
+case "${1:-}" in
+  init) shift; cmd_init "$@" ;;
+  task)
+    shift
+    case "${1:-}" in
+      new) shift; cmd_task_new "$@" ;;
+      *) usage; exit 1 ;;
+    esac
+    ;;
+  tui) shift; exec amonite-tui "$@" ;;
+  verify) shift; cmd_verify "$@" ;;
+  generations) shift; cmd_generations ;;
+  rollback) shift; cmd_rollback "$@" ;;
+  status) shift; cmd_status ;;
+  -h|--help|help|"") usage ;;
+  *) echo "amonite: unknown command '$1'" >&2; usage; exit 1 ;;
+esac
