@@ -13,8 +13,10 @@ with no LLM re-reading markdown to decide compliance.
 ## Install
 
 ```bash
-nix profile install github:thatbagu/amonite
+nix shell github:thatbagu/amonite
 ```
+
+This drops you into a shell with `amonite` on `PATH`. To use it across sessions, add it to your project's `devShell` or a persistent `nix shell` alias.
 
 ## Start a new project
 
