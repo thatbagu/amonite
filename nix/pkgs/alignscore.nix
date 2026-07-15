@@ -6,7 +6,7 @@ pkgs.stdenvNoCC.mkDerivation {
   src = pkgs.fetchurl {
     url = "https://huggingface.co/yzha/AlignScore/resolve/main/AlignScore-base.ckpt";
     outputHashAlgo = "sha256";
-    outputHash = pkgs.lib.fakeHash;
+    outputHash = "sha256-au22N/BZarKbrvkelEZqV/Ay4C/uplSXhRiRn+CYFgc=";
   };
 
   dontUnpack = true;
