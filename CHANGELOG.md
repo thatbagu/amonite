@@ -4,6 +4,13 @@ All notable changes to amonite are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.0.0 (2026-07-15)
+
+
+### Features
+
+* amonite v0.2 — docs, CI/release pipeline, TUI waves, shell completions ([797eb3d](https://github.com/thatbagu/amonite/commit/797eb3d98c99e8b1091911a265f0384135449233))
+
 ## [Unreleased]
 
 ### Added
