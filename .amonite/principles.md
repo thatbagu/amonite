@@ -29,10 +29,11 @@
 
 - N1: `nix flake check` green on the project root before any cluster is
   declared complete.
-- N2: The lib surface stays at four functions: mkTask, mkCluster,
-  mkApplication, mkResearchTask. mkResearchTask is the only permitted
-  specialisation of mkTask and exists solely to enforce the
-  sources-alongside-report pattern and inject faithfulness verification.
+- N2: The lib surface stays at five functions: mkTask, mkCluster,
+  mkApplication, mkResearchTask, mkVmVerify. mkResearchTask enforces the
+  sources-alongside-report pattern and offline faithfulness verification.
+  mkVmVerify wraps pkgs.testers.runNixOSTest so a VM integration test is
+  just another derivation a cluster depends on (Linux builders only).
   No further lib functions without an explicit spec amendment.
 - N3: shellcheck must pass on bin/amonite at all times; it is part of
   the nix flake check suite.

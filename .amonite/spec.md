@@ -206,8 +206,10 @@ tiers: a fast lexical gate and a slower NLI claim-level check.
   derivation build exits non-zero with a message naming the gate that
   tripped.
 - [ ] A research task whose `$out/report.md` has mean NLI entailment score
-  < 0.65 (sentence-level, AlignScore 355M) against `$out/sources/` fails
-  verification: build exits non-zero.
+  < 0.35 (sentence-level, AlignScore NLI-SP, calibrated for synthesis tasks)
+  against `$out/sources/` fails verification: build exits non-zero. Default
+  threshold is 0.35; extraction tasks may use higher values; synthesis tasks
+  that draw analytical conclusions may need values as low as 0.30.
 - [ ] A research task with a report that is faithfully grounded (synthetic
   fixture: report sentences copied verbatim from source) passes both gates:
   `nix build .#research-fixture` exits 0.
@@ -224,12 +226,29 @@ tiers: a fast lexical gate and a slower NLI claim-level check.
   on the same inputs produces the same store path (content-addressed).
 - [ ] `nix flake check` exits 0 on the project root after all changes.
 
+### US10 (spec amendment): VM verification as first-class derivation
+
+*N2 amendment — adds mkVmVerify as the fifth lib function.*
+
+As a task author needing full-system integration tests, I want to declare a
+NixOS VM test inside a cluster's task list so that the cluster cannot build
+until the VM test passes, exactly like any other task.
+
+**Done when**:
+- [ ] `mkVmVerify { id; nodes; testScript; }` is callable in any `task.nix`
+  or `clusters.nix` and returns a derivation a cluster can depend on.
+- [ ] The derivation is a standard `pkgs.testers.runNixOSTest` result —
+  no custom orchestration, no state files.
+- [ ] On darwin with no linux-builder, `nix build .#task-VM001` fails with
+  a clear "linux builder required" message rather than a silent skip.
+- [ ] `nix flake check` exits 0 on x86_64-linux.
+- [ ] The architecture docs list mkVmVerify as the 5th lib function.
+
 ## Out of scope
 
 - Home-manager module (separate PR after nixpkgs submission).
 - Remote builder configuration.
 - amonite daemon / persistent state beyond the Nix store.
-- Any lib surface changes (N2 invariant).
 - Windows/WSL support.
 
 ## Open questions

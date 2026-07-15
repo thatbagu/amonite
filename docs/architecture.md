@@ -42,6 +42,8 @@ disagree.
 
 ### 4. Derivation semantics (nix/lib.nix)
 
+Five public functions — no more without a spec amendment (N2):
+
 - `mkTask`: build runs, then every `verify` snippet must exit 0, inside the
   same derivation. Existence in the store ⇒ verified. The verification
   trail is written to `$out/.amonite/verified` so it ships with the artifact.
@@ -51,6 +53,16 @@ disagree.
   integration criteria.
 - `mkApplication` = `mkCluster`, vocabulary for the root: the final
   derivation aka the working application.
+- `mkResearchTask`: wraps `mkTask` and enforces that the build produces
+  `$out/sources/` (collected evidence) and `$out/report.md` (synthesis).
+  After the build, two offline verification tiers run automatically: TF-IDF
+  cosine similarity (fast lexical gate) and AlignScore NLI entailment
+  (claim-level faithfulness against sources). No network at verify time;
+  model weights are a fixed-output Nix derivation.
+- `mkVmVerify`: wraps `pkgs.testers.runNixOSTest` so a full NixOS VM
+  integration test is just another derivation in a cluster's member list.
+  Linux builders required (x86_64-linux or aarch64-linux); on darwin,
+  configure a linux-builder or remote builder.
 
 ## Verification ladder
 
@@ -79,7 +91,7 @@ not the toolchain.
 - No orchestrator daemon, no state DB: the Nix store is the state.
 - No LLM-judged compliance: if a criterion can't be mechanical it goes to
   `gate.live` where a human owns it.
-- No framework growth: the surface is one lib (3 functions), 4 templates,
+- No framework growth: the surface is one lib (5 functions), 4 templates,
   5 commands, 1 CLI. If it needs plugins, it has failed.
 
 ## Generations
@@ -94,12 +106,33 @@ full verification tree. Generations are machine-local (gitignored);
 reproducing one elsewhere = checking out its rev and building, which the
 committed locks make bit-identical.
 
-## Known limitations / next
+## Verification quality
 
-- `mkVmVerify` (nixosTest) requires Linux builders; on darwin configure a
-  linux-builder or remote builder.
+`verify` entries must exercise behavior, not file presence:
+
+| Pattern | Verdict | Note |
+|---|---|---|
+| `"$out/bin/tool" --help \| grep -q expected` | ✓ behavioral | invokes the binary |
+| `shellcheck --shell=bash "$out/bin/amonite"` | ✓ behavioral | runs the checker |
+| `python3 verify_tfidf.py --report ... --threshold 0.08` | ✓ behavioral | executes script |
+| `nix build .#research-fixture --no-link` | ✓ behavioral | proves derivation builds |
+| `test -f "$out/bin/tool"` | ✗ weak | passes for empty/broken files |
+| `grep -q "keyword" "$out/src/file.nix"` | ✗ weak | passes even if logic is dead |
+
+The only acceptable `test -f` / `grep -q` uses: static assets (license files,
+workflow YAML that can't be run hermeticallay) where there is no runnable form.
+Always note why in a comment when using them.
+
+## Known limitations
+
+- `mkVmVerify` requires Linux builders; on darwin configure a linux-builder or
+  remote builder before using it in a cluster.
 - Live-infra work (terraform against real state) only benefits at the
   toolchain + plan-policy layers; the final verdict stays impure by nature.
 - `verify` snippets run as part of the build, so they cannot use the
   network — that is the point, but it means e.g. "call the staging API"
   is structurally excluded (gate.live).
+- AlignScore NLI threshold calibration: synthesis research tasks (analytical
+  conclusions drawn from sources) naturally score lower than extraction tasks
+  (sentences copied verbatim from sources). Default threshold 0.35 is
+  calibrated for synthesis; adjust per task based on observed mean scores.

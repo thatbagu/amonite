@@ -31,6 +31,41 @@ principles ─▶ specify ─▶ plan ─▶ tasks ─▶ implement
 | **Reproducibility** | `flake.lock` everywhere. Any reviewer re-runs any verification bit-identically. |
 | **Run/build verification** | Acceptance criteria are `verify` entries executed inside the derivation. Clusters depend on member tasks, so Nix's own dependency semantics enforce "verified before composed" — no orchestrator. |
 
+## Library (nix/lib.nix) — five functions
+
+```nix
+mkTask            # one unit of work + acceptance criteria baked into the build
+mkCluster         # aggregates verified tasks; integration verify block
+mkApplication     # alias for mkCluster at the root (the deliverable)
+mkResearchTask    # wraps mkTask; enforces sources/ + report.md;
+                  # runs TF-IDF + AlignScore NLI offline verification automatically
+mkVmVerify        # wraps pkgs.testers.runNixOSTest; VM test = cluster member
+```
+
+No further functions without a spec amendment (N2).
+
+### Research tasks
+
+AI agent outputs are just text — and text can hallucinate. `mkResearchTask`
+makes faithfulness a build constraint:
+
+```nix
+amonite.mkResearchTask {
+  id = "R001"; title = "framework comparison";
+  src = ../..; tfidfThreshold = 0.08; nliThreshold = 0.35;
+  build = ''
+    cp "$src/research/R001/sources/." "$out/sources/"   # evidence
+    cp "$src/research/R001/report.md"  "$out/report.md" # synthesis
+    python3 verify_tfidf.py --report ... --threshold 0.08   # tier 1
+    python3 verify_nli.py   --report ... --threshold 0.35   # tier 2
+  '';
+}
+```
+
+The derivation fails if the report drifts from its sources — no LLM judge,
+no network at verify time. Model weights (AlignScore, RoBERTa-base) are
+bundled as a fixed-output Nix derivation.
+
 ## Quickstart
 
 ```bash
@@ -104,7 +139,13 @@ the one sin the flow refuses.
 
 ## Status
 
-Early scaffold. The lib self-tests (`nix flake check`), the flow templates,
-generations/rollback, and `mkVmVerify` (nixosTest cluster verification,
-Linux builders) work; remote-builder support is next. Locks are generated
-and committed automatically by `init` / `task new` / `verify`.
+v0.2 — all nine sprint stories shipped:
+- flow-only init, nixpkgs package.nix, shell completions, CLI UX hardening
+- parallel-agent wave planner (`amonite waves`)
+- mdBook docs site + GitHub Pages CI
+- CI gate (matrix, Cachix) + release-please pipeline
+- TUI wave view (`w` key)
+- `mkResearchTask` + offline two-tier faithfulness verification (TF-IDF + AlignScore NLI)
+
+`nix flake check` is the total hermetic gate. Locks are generated and
+committed automatically by `init` / `task new` / `verify`.

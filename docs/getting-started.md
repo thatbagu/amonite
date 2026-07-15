@@ -61,3 +61,40 @@ amonite verify C001   # cluster: member tasks + integration checks
 amonite verify APP    # full application → records a generation
 amonite verify all    # nix flake check
 ```
+
+## Research tasks
+
+When an AI agent produces a research report, `mkResearchTask` enforces that
+the report is grounded in collected sources — offline, hermeticallay, inside
+the Nix sandbox. Two verification tiers run automatically in the build phase:
+
+1. **TF-IDF cosine similarity** — fast lexical gate; fails if the report has
+   no lexical overlap with the sources.
+2. **AlignScore NLI entailment** — claim-level faithfulness; fails if the
+   mean entailment score drops below the threshold.
+
+```nix
+# task.nix
+{ pkgs, amonite }:
+amonite.mkResearchTask {
+  id = "R001";
+  title = "framework comparison research";
+  src = ../..; tfidfThreshold = 0.08; nliThreshold = 0.35;
+  build = ''
+    mkdir -p "$out/sources"
+    # agent copies collected source files here:
+    cp "$src/research/R001/sources/." "$out/sources/"
+    cp "$src/research/R001/report.md"  "$out/report.md"
+    python3 "$src/nix/research/verify_tfidf.py" --report "$out/report.md" \
+      --sources "$out/sources" --threshold 0.08
+    python3 "$src/nix/research/verify_nli.py"   --report "$out/report.md" \
+      --sources "$out/sources" --threshold 0.35 \
+      --weights-dir "${alignscoreWeights}"
+  '';
+}
+```
+
+If the report drifts from its sources the derivation build exits non-zero —
+same as a failing unit test. No LLM judge; no network at verify time.
+AlignScore model weights are packaged as a fixed-output Nix derivation
+(`nix build .#alignscore-weights`).
