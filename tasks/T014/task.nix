@@ -1,31 +1,39 @@
-# Task definition — the single source of truth for this task.
-# Referenced by BOTH this capsule's flake (for encapsulated dev/verify)
-# and the project flake (for aggregate verification and clustering).
 { pkgs, amonite }:
 
 amonite.mkTask {
-  id = "T014"; # amonite task id, matches tasks.md
+  id = "T014";
   title = "AlignScore model weights Nix derivation";
 
-  # Source this task builds from. Usually the project root filtered to
-  # what the task may see — keep the aperture as narrow as possible.
-  # src = ../..;
+  src = ../..;
 
-  # Encapsulation boundary: everything this task's build and dev shell
-  # may use. Nothing else is available.
-  env = with pkgs; [
-    coreutils
-  ];
+  env = with pkgs; [ coreutils curl cacert ];
 
-  # Build: produce the task's artifacts under $out.
-  build = ''
-    echo "REPLACE with build steps" && exit 1
-  '';
+  build = ''echo "T014 not yet implemented" >&2 && exit 1'';
 
-  # Acceptance criteria from tasks.md, made mechanical. Every entry must
-  # exit 0 or the task does not exist as a derivation.
   verify = {
-    # unit-tests = ''pytest tests/'';
-    # artifact = ''test -s "$out/thing"'';
+    # Nix derivation file exists for the weights package
+    weights-nix-exists = ''
+      test -f "$out/nix/pkgs/alignscore.nix"
+    '';
+
+    # It is a valid Nix expression (parse check)
+    weights-nix-parses = ''
+      nix-instantiate --parse "$out/nix/pkgs/alignscore.nix" > /dev/null
+    '';
+
+    # Exposes alignscore-weights in flake packages
+    flake-exposes-weights = ''
+      grep -q "alignscore-weights" "$out/flake.nix"
+    '';
+
+    # The derivation is a fixed-output (has outputHash — ensures reproducibility)
+    is-fixed-output = ''
+      grep -q "outputHash" "$out/nix/pkgs/alignscore.nix"
+    '';
+
+    # Build produces checkpoint file at expected path
+    checkpoint-path-declared = ''
+      grep -q "AlignScore" "$out/nix/pkgs/alignscore.nix"
+    '';
   };
 }

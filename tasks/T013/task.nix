@@ -1,31 +1,61 @@
-# Task definition — the single source of truth for this task.
-# Referenced by BOTH this capsule's flake (for encapsulated dev/verify)
-# and the project flake (for aggregate verification and clustering).
 { pkgs, amonite }:
 
 amonite.mkTask {
-  id = "T013"; # amonite task id, matches tasks.md
+  id = "T013";
   title = "TF-IDF faithfulness verify script";
 
-  # Source this task builds from. Usually the project root filtered to
-  # what the task may see — keep the aperture as narrow as possible.
-  # src = ../..;
+  src = ../..;
 
-  # Encapsulation boundary: everything this task's build and dev shell
-  # may use. Nothing else is available.
   env = with pkgs; [
     coreutils
+    (python3.withPackages (ps: [ ps.scikit-learn ]))
   ];
 
-  # Build: produce the task's artifacts under $out.
-  build = ''
-    echo "REPLACE with build steps" && exit 1
-  '';
+  build = ''echo "T013 not yet implemented" >&2 && exit 1'';
 
-  # Acceptance criteria from tasks.md, made mechanical. Every entry must
-  # exit 0 or the task does not exist as a derivation.
   verify = {
-    # unit-tests = ''pytest tests/'';
-    # artifact = ''test -s "$out/thing"'';
+    # Script is installed and syntactically valid
+    script-exists = ''
+      test -f "$out/nix/research/verify_tfidf.py"
+    '';
+
+    script-syntax = ''
+      python3 -m py_compile "$out/nix/research/verify_tfidf.py"
+    '';
+
+    # Fast gate: report with zero lexical overlap fails (cosine < 0.10)
+    rejects-detached-report = ''
+      tmp=$(mktemp -d)
+      mkdir -p "$tmp/sources"
+      echo "The mitochondria is the powerhouse of the cell." > "$tmp/sources/source.txt"
+      echo "Quantum entanglement enables faster-than-light communication." > "$tmp/report.md"
+      python3 "$out/nix/research/verify_tfidf.py" \
+        --report "$tmp/report.md" \
+        --sources "$tmp/sources" \
+        --threshold 0.10 \
+        && exit 1 || true
+    '';
+
+    # Grounded report (verbatim copy of source) passes
+    accepts-grounded-report = ''
+      tmp=$(mktemp -d)
+      mkdir -p "$tmp/sources"
+      echo "The mitochondria is the powerhouse of the cell." > "$tmp/sources/source.txt"
+      echo "The mitochondria is the powerhouse of the cell." > "$tmp/report.md"
+      python3 "$out/nix/research/verify_tfidf.py" \
+        --report "$tmp/report.md" \
+        --sources "$tmp/sources" \
+        --threshold 0.10
+    '';
+
+    # Exits 0 fast (under 5 seconds for small inputs)
+    runs-fast = ''
+      tmp=$(mktemp -d)
+      mkdir -p "$tmp/sources"
+      echo "amonite is a spec-driven development framework." > "$tmp/sources/s.txt"
+      echo "amonite compiles specs to Nix derivations." > "$tmp/report.md"
+      timeout 5 python3 "$out/nix/research/verify_tfidf.py" \
+        --report "$tmp/report.md" --sources "$tmp/sources" --threshold 0.05
+    '';
   };
 }

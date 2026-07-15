@@ -4,8 +4,10 @@
 
 ## Technical context
 
-- **Language/runtime**: bash (CLI), Go 1.22 (TUI), Nix (lib + package derivation)
-- **Key dependencies**: git, nix, bubbletea/lipgloss (TUI, already vendored)
+- **Language/runtime**: bash (CLI), Go 1.22 (TUI), Nix (lib + package derivation),
+  Python 3.x (research task verify scripts only — task env grants, not CLI runtime)
+- **Key dependencies**: git, nix, bubbletea/lipgloss (TUI, already vendored);
+  scikit-learn (TF-IDF gate); AlignScore 355M checkpoint (NLI gate, ~350 MB FOD)
 - **Storage**: none beyond the Nix store and .amonite/ flow files
 - **Target**: x86_64-linux, aarch64-linux, x86_64-darwin, aarch64-darwin
 
@@ -20,7 +22,7 @@
 
 ## Architecture
 
-Six independent deliverables that share no runtime coupling:
+Eight independent deliverables that share no runtime coupling:
 
 1. **bin/amonite** — bash CLI extended with `--flow-only` flag and UX fixes.
    Self-contained; verified by shellcheck + behavioural tests in derivation.
@@ -63,6 +65,21 @@ Six independent deliverables that share no runtime coupling:
    Verified structurally in task derivations (file existence + grep for key
    strings). Actual CI execution and GitHub Release creation are gate.live.
 
+7. **nix/lib.nix mkResearchTask** — fourth lib function (N2 amended). Wraps
+   mkTask with three additional behaviours: (a) enforces `$out/sources/`
+   and `$out/report.md` exist after build, (b) injects two-tier
+   faithfulness verify automatically, (c) accepts `tfidfThreshold` and
+   `nliThreshold` overrides. Dogfood check added to `flake.nix` checks.
+
+8. **nix/pkgs/alignscore.nix** — fixed-output Nix derivation for the
+   AlignScore-base checkpoint (~350 MB). Fetched once, store-cached.
+   Exposed as `packages.*.alignscore-weights`. The verify scripts receive
+   the weights path via an env var injected by mkResearchTask.
+   TF-IDF verify script (`nix/research/verify_tfidf.py`) uses scikit-learn
+   only — no model weights, runs in <1s. NLI verify script
+   (`nix/research/verify_nli.py`) loads the checkpoint and runs
+   sentence-level entailment in <60s on CPU for a typical report.
+
 ## Verification strategy
 
 | Layer | How verified | Hermetic? |
@@ -96,13 +113,27 @@ Six independent deliverables that share no runtime coupling:
 | gate.live | docs site reachable at github.io/amonite after first docs push | NO |
 | gate.live | GitHub Release created when v0.2.0 tag is pushed | NO |
 
+| mkResearchTask evaluates | nix flake check with mkResearchTask in dogfood check exits 0 | yes |
+| TF-IDF gate rejects detached report | fixture: report with cosine < 0.10 → build exits non-zero | yes |
+| TF-IDF gate accepts grounded report | fixture: report copied from source → build exits 0 | yes |
+| NLI gate rejects fabricated claim | fixture: one sentence contradicts source → build exits non-zero | yes |
+| NLI gate accepts faithful report | fixture: paraphrased but grounded report → build exits 0 | yes |
+| alignscore-weights builds | nix build .#alignscore-weights exits 0 | yes |
+| threshold config accepted | mkResearchTask { tfidfThreshold = 0.05; nliThreshold = 0.60; } evaluates | yes |
+| verify is deterministic | nix build .#research-fixture twice → same store path | yes |
+| gate.live | real agent-produced research report passes verification on first run | NO |
+
 ## Cluster topology (planned)
 
-- C001 cli-hardening ← T001 (--flow-only flag), T002 (UX guards + status colour), T005 (wave planner)
-- C002 distribution   ← T003 (package.nix), T004 (completions)
-- C003 docs-site      ← T006 (mdBook content), T007 (GitHub Pages CI workflow)
+- C001 cli-hardening    ← T001 (--flow-only flag), T002 (UX guards + status colour), T005 (wave planner)
+- C002 distribution    ← T003 (package.nix), T004 (completions)
+- C003 docs-site       ← T006 (mdBook content), T007 (GitHub Pages CI workflow)
 - C004 release-pipeline ← T008 (PR CI gate workflow), T009 (release workflow + CHANGELOG + CONTRIBUTING)
-- APP                 ← C001, C002, C003, C004
+- C005 tui-waves       ← T011 (TUI wave view)
+- C006 research-verify ← T012 (mkResearchTask lib fn), T013 (TF-IDF verify script),
+                         T014 (AlignScore weights derivation), T015 (NLI verify + fixtures)
+                         wave 1: T012, T013, T014 (parallel); wave 2: T015 (depends on all three)
+- APP                  ← C001, C002, C003, C004, C005, C006
 
 ## Risks / complexity
 

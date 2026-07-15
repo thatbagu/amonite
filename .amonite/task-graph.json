@@ -12,13 +12,17 @@
         { "id": "T008", "title": "PR CI gate workflow (nix flake check, matrix, Cachix)", "cluster": "C004", "depends": [] },
         { "id": "T009", "title": "Release workflow + CHANGELOG + CONTRIBUTING", "cluster": "C004", "depends": [] },
         { "id": "T010", "title": "release-please automated release pipeline", "cluster": "C004", "depends": [] },
-        { "id": "T011", "title": "TUI wave view", "cluster": "C005", "depends": [] }
+        { "id": "T011", "title": "TUI wave view", "cluster": "C005", "depends": [] },
+        { "id": "T012", "title": "mkResearchTask lib function", "cluster": "C006", "depends": [] },
+        { "id": "T013", "title": "TF-IDF faithfulness verify script", "cluster": "C006", "depends": [] },
+        { "id": "T014", "title": "AlignScore model weights Nix derivation", "cluster": "C006", "depends": [] }
       ]
     },
     {
       "wave": 2,
       "tasks": [
-        { "id": "T005", "title": "Parallel-agent wave planner (task-graph.json + amonite waves)", "cluster": "C001", "depends": ["T001", "T002"] }
+        { "id": "T005", "title": "Parallel-agent wave planner (task-graph.json + amonite waves)", "cluster": "C001", "depends": ["T001", "T002"] },
+        { "id": "T015", "title": "NLI faithfulness verify integration and fixtures", "cluster": "C006", "depends": ["T012", "T013", "T014"] }
       ]
     }
   ]

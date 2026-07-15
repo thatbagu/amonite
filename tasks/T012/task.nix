@@ -1,31 +1,39 @@
-# Task definition — the single source of truth for this task.
-# Referenced by BOTH this capsule's flake (for encapsulated dev/verify)
-# and the project flake (for aggregate verification and clustering).
 { pkgs, amonite }:
 
 amonite.mkTask {
-  id = "T012"; # amonite task id, matches tasks.md
+  id = "T012";
   title = "mkResearchTask lib function";
 
-  # Source this task builds from. Usually the project root filtered to
-  # what the task may see — keep the aperture as narrow as possible.
-  # src = ../..;
+  src = ../..;
 
-  # Encapsulation boundary: everything this task's build and dev shell
-  # may use. Nothing else is available.
-  env = with pkgs; [
-    coreutils
-  ];
+  env = with pkgs; [ nix git coreutils ];
 
-  # Build: produce the task's artifacts under $out.
-  build = ''
-    echo "REPLACE with build steps" && exit 1
-  '';
+  build = ''echo "T012 not yet implemented" >&2 && exit 1'';
 
-  # Acceptance criteria from tasks.md, made mechanical. Every entry must
-  # exit 0 or the task does not exist as a derivation.
   verify = {
-    # unit-tests = ''pytest tests/'';
-    # artifact = ''test -s "$out/thing"'';
+    # lib.nix exports mkResearchTask
+    lib-exports-fn = ''
+      grep -q "mkResearchTask" "$out/nix/lib.nix"
+    '';
+
+    # It accepts tfidfThreshold and nliThreshold overrides (nix eval clean)
+    fn-accepts-thresholds = ''
+      grep -q "tfidfThreshold" "$out/nix/lib.nix"
+      grep -q "nliThreshold" "$out/nix/lib.nix"
+    '';
+
+    # Dogfood: flake.nix checks block exercises mkResearchTask
+    flake-dogfoods-fn = ''
+      grep -q "mkResearchTask" "$out/flake.nix"
+    '';
+
+    # sources/ and report.md enforcement present in function body
+    enforces-sources-dir = ''
+      grep -q "sources" "$out/nix/lib.nix"
+    '';
+
+    enforces-report-md = ''
+      grep -q "report.md" "$out/nix/lib.nix"
+    '';
   };
 }

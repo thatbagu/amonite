@@ -91,6 +91,30 @@ let
     };
   };
 
+  researchVerify = amonite.mkCluster {
+    id = "C006";
+    title = "research-verify";
+    tasks = with tasks; [ T012 T013 T014 T015 ];
+    verify = {
+      # mkResearchTask is exported from lib.nix
+      lib-fn-present = ''
+        grep -q "mkResearchTask" "$out/tasks/T012/nix/lib.nix"
+      '';
+      # TF-IDF script is installed
+      tfidf-script-present = ''
+        test -f "$out/tasks/T013/nix/research/verify_tfidf.py"
+      '';
+      # NLI script is installed
+      nli-script-present = ''
+        test -f "$out/tasks/T015/nix/research/verify_nli.py"
+      '';
+      # AlignScore weights derivation declared
+      weights-derivation-present = ''
+        test -f "$out/tasks/T014/nix/pkgs/alignscore.nix"
+      '';
+    };
+  };
+
 in
 {
   C001 = cliHardening;
@@ -98,20 +122,23 @@ in
   C003 = docsSite;
   C004 = releasePipeline;
   C005 = tuiWaves;
+  C006 = researchVerify;
 
   APP = amonite.mkApplication {
     id = "APP";
     title = "amonite v0.2";
-    tasks = [ cliHardening distribution docsSite releasePipeline tuiWaves ];
+    tasks = [ cliHardening distribution docsSite releasePipeline tuiWaves researchVerify ];
     env = [ pkgs.bash pkgs.coreutils ];
     verify = {
-      # Full help output includes every subcommand added in this sprint.
       help-complete = ''
         msg=$(AMONITE_SHARE="$out/tasks/C001/tasks/T002" \
               bash "$out/tasks/C001/tasks/T002/bin/amonite" --help 2>&1 || true)
         echo "$msg" | grep -q 'init'
         echo "$msg" | grep -q 'waves'
         echo "$msg" | grep -q 'status'
+      '';
+      research-lib-present = ''
+        grep -q "mkResearchTask" "$out/tasks/C006/tasks/T012/nix/lib.nix"
       '';
     };
   };

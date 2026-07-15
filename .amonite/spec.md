@@ -184,6 +184,46 @@ and which tasks are blocked vs. runnable.
 - [ ] `nix build .#amonite-tui` exits 0 after the change.
 - [ ] `nix flake check` exits 0 (N1).
 
+### US9 (P1): Research task type with offline faithfulness verification
+
+As a project lead using amonite to run AI research tasks, I want the
+framework to verify that a research report is faithful to its source
+documents — without a human reviewer or LLM judge — so that hallucinated
+or detached outputs fail the build just like broken code.
+
+**Workflow**: the agent fetches source documents and saves them as plain
+text alongside the report inside the task's output directory. Verification
+then runs entirely in the Nix sandbox (no network) using two deterministic
+tiers: a fast lexical gate and a slower NLI claim-level check.
+
+**Done when** (observable, will compile into cluster verifications):
+
+- [ ] `mkResearchTask` is callable in any `task.nix` and produces a valid
+  Nix derivation: `nix flake check` exits 0 with a `mkResearchTask` task
+  present in `flake.nix`.
+- [ ] A research task whose `$out/report.md` has TF-IDF cosine similarity
+  < 0.10 against all files in `$out/sources/` fails verification: the
+  derivation build exits non-zero with a message naming the gate that
+  tripped.
+- [ ] A research task whose `$out/report.md` has mean NLI entailment score
+  < 0.65 (sentence-level, AlignScore 355M) against `$out/sources/` fails
+  verification: build exits non-zero.
+- [ ] A research task with a report that is faithfully grounded (synthetic
+  fixture: report sentences copied verbatim from source) passes both gates:
+  `nix build .#research-fixture` exits 0.
+- [ ] A research task with a fabricated claim not present in any source
+  (synthetic fixture: one sentence inserted that contradicts sources) fails
+  the NLI gate: `nix build .#research-fixture-bad` exits non-zero.
+- [ ] AlignScore model weights are packaged as a Nix derivation:
+  `nix build .#alignscore-weights` exits 0, producing the checkpoint files
+  needed by the verify script.
+- [ ] Thresholds are configurable per task:
+  `mkResearchTask { tfidfThreshold = 0.05; nliThreshold = 0.60; }` is
+  valid Nix and overrides the defaults without touching lib.nix internals.
+- [ ] Verify is deterministic: running `nix build .#research-fixture` twice
+  on the same inputs produces the same store path (content-addressed).
+- [ ] `nix flake check` exits 0 on the project root after all changes.
+
 ## Out of scope
 
 - Home-manager module (separate PR after nixpkgs submission).
