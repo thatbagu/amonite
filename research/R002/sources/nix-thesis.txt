@@ -1,0 +1,47 @@
+SOURCE: Nix (package manager) — Wikipedia
+URL: https://en.wikipedia.org/wiki/Nix_(package_manager)
+Fetched: 2026-07-15
+(Summarising content derived from Dolstra's 2006 PhD thesis "The Purely Functional Software Deployment Model" and subsequent work)
+
+CORE MODEL:
+Nix employs a purely functional approach where "software packages are each installed into unique directories with immutable contents." These directory names use cryptographic hashes that account for all dependencies, making "packages with the same name will have had the same inputs and the same build platform, and therefore the same build result."
+
+TECHNICAL ARCHITECTURE — The Nix Store & Derivations:
+The system automatically tracks file dependencies through "derivations" — persistent data structures specifying executables, arguments, environment variables, and input files. Builds run in sandboxes "that prohibit access to anything but the explicitly specified input files and only allows writing to the designated output path."
+
+REPRODUCIBILITY & ROBUSTNESS BENEFITS (from Dolstra's 2006 PhD thesis research):
+- Atomic upgrades with efficient rollback capabilities
+- Dependency elimination: Multiple package versions with different shared libraries can coexist safely
+- Elimination of dependency hell through unique directory naming
+- Multi-user safety without requiring administrator privileges
+The system achieves this through automatic reference tracking that "ensures integrity of packages, even when they are transferred across machines."
+
+SCALE:
+The Nixpkgs repository contains "more than 122,000 packages" (as of January 2025) and uses continuous integration via Hydra to build packages regularly, uploading results to a public binary cache to avoid local compilation.
+
+ORIGINS:
+Nix was developed by Eelco Dolstra during his PhD research at Utrecht University, originating as a research project around 2003, with its core concepts outlined in a 2004 conference paper and further detailed in Dolstra's 2006 thesis on purely functional software deployment.
+
+PROBLEM BEING SOLVED:
+The project emerged from Dolstra's exploration of purely functional models for software deployment, aiming to resolve longstanding problems in traditional package management systems, such as "dependency hell" — where conflicting library versions or inconsistent installations lead to brittle and unpredictable software environments.
+
+HERMETIC BUILD PROPERTIES:
+Packages are treated as pure functions of their declared build- and run-time dependencies. Nix expressions evaluate reproducibly into precisely defined build recipes, called derivations, which specify the exact software environment required for the build. The tool builds packages in isolated environments to prevent undeclared dependencies and ensure bit-for-bit identical outputs across different machines.
+
+---
+
+SOURCE: Lila: Decentralized Build Reproducibility Monitoring for the Functional Package Management Model
+URL: https://arxiv.org/abs/2601.20662 / https://arxiv.org/pdf/2601.20662
+Fetched: 2026-07-15
+
+FULL ABSTRACT:
+"Ensuring the integrity of software build artifacts is an increasingly important concern for modern software engineering, driven by increasingly sophisticated attacks on build systems, distribution channels, and development infrastructures. Reproducible builds – where binaries built independently from the same source code can be verified to be bit-for-bit identical to the distributed artifacts – provide a principled foundation for transparency and trust in software distribution. Despite their potential, the large-scale adoption of reproducible builds faces two significant challenges: achieving high reproducibility rates across vast software collections and establishing reproducibility monitoring infrastructure that can operate at very large scale. While recent studies have shown that high reproducibility rates are achievable at scale – demonstrated by the Nix ecosystem achieving over 90% reproducibility on more than 80,000 packages – the problem of effective reproducibility monitoring remains largely unsolved. In this work, we address the reproducibility monitoring challenge by introducing Lila, a decentralized system for reproducibility assessment tailored to the functional package management model."
+
+KEY FINDING:
+The Nix ecosystem has achieved "over 90% reproducibility on more than 80,000 packages," demonstrating that high reproducibility rates are achievable at scale in functional package management systems.
+
+SECURITY ARGUMENTS:
+The paper argues that reproducible builds address integrity threats from "increasingly sophisticated attacks on build systems, distribution channels, and development infrastructures" by enabling verification that distributed binaries match independently-built versions.
+
+CORE CONTRIBUTION:
+Lila enables "distributed reporting of build results and aggregation into a reproducibility database," specifically designed for functional package managers.

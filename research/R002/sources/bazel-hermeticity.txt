@@ -1,0 +1,24 @@
+SOURCE: Hermeticity — Bazel Documentation
+URL: https://bazel.build/basics/hermeticity
+Fetched: 2026-07-15
+
+DEFINITION:
+Hermeticity in Bazel refers to "a hermetic build system [that] always returns the same output by isolating the build from changes to the host system." The concept rests on two pillars:
+
+1. Isolation: Build tools are managed as source code within contained file structures, separating the build environment from the host machine's installed software.
+
+2. Source identity: Hash-based identification of code repositories ensures input consistency across builds.
+
+KEY BENEFITS:
+The documentation identifies four primary advantages:
+
+- Speed: Cached action outputs eliminate redundant work when inputs remain unchanged.
+- Parallel execution: Deterministic inputs enable the system to construct efficient action graphs for concurrent processing.
+- Multiple simultaneous builds: Different projects can use different tool versions on the same machine without conflicts.
+- Reproducibility: Exact conditions are preserved, supporting effective troubleshooting and verification.
+
+COMMON NON-HERMETIC ISSUES:
+The page identifies problematic patterns including "arbitrary processing in `.mk` files," "actions or tooling that create files non-deterministically," system-dependent binaries, and "writing to the source tree during the build."
+
+TROUBLESHOOTING STRATEGIES:
+Recommended approaches involve sequential null builds, cross-machine validation, Docker container testing, remote execution rules, sandboxing enforcement, and workspace rule logging using the `--experimental_workspace_rules_log_file` flag.

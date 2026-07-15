@@ -1,0 +1,85 @@
+# devenv — key information
+
+SOURCE: https://devenv.sh and https://devenv.sh/getting-started/ and https://devenv.sh/tests/
+
+## What It Is
+devenv is a declarative framework for creating reproducible, composable developer
+environments using Nix. It enables teams to define consistent development setups
+that work across Linux, macOS, and WSL2.
+
+The core value proposition: "Fast, Declarative, Reproducible, and Composable
+Developer Environments using Nix"
+
+## Specification Format
+Configuration uses a JSON-like declarative language in "devenv.nix" files, with
+optional "devenv.yaml" for monorepo/polyrepo imports. The system also supports
+"secretspec.toml" for secrets management.
+
+Two primary configuration files:
+- devenv.yaml: Manages inputs and project dependencies
+- devenv.nix: Defines the actual developer environment configuration
+
+Projects initialize with "devenv init", which creates the necessary configuration
+files and a ".gitignore". This scaffolding approach provides a standardized
+starting point.
+
+## Verification & Hermeticity
+- Smart caching: "Automatically detects all files accessed during evaluation.
+  Cache is automatically invalidated when any tracked file changes."
+- Fast activation: Environments activate in under 100ms through precise Nix
+  evaluation caching.
+- No daemons required: Works out-of-the-box with no manual configuration or
+  file-watching setup.
+- The "devenv test" command "builds your developer environment and makes sure
+  that all checks pass," enabling reproducible validation across team members.
+
+## Testing
+Testing in devenv verifies that development environments function as expected.
+Running "devenv test" builds the environment and executes tests defined in the
+"enterTest" configuration block.
+
+Tests are written in the "enterTest" attribute using shell commands. A basic
+example: "packages = [ pkgs.ncdu ]; enterTest = '' ncdu --version | grep
+\"ncdu 2.2\" '';"
+
+By default, devenv automatically detects and runs ".test.sh" files if they exist.
+
+A significant feature is automatic process management during testing: "If you
+have processes defined in your environment, they will be started and stopped
+for you." This enables integration testing where services like nginx are spun
+up, tested, then shut down automatically.
+
+Devenv provides helper functions for common testing scenarios:
+- "wait_for_port <port> <timeout>": Waits for port availability before running
+  assertions.
+
+Testing supports conditional configuration using "config.devenv.isTesting".
+This allows developers to adjust environment setup specifically for test
+scenarios, disabling certain processes or dependencies.
+
+The documentation recommends considering "tasks with the 'before' attribute"
+for complex test setups, as they offer better dependency management and
+parallelization.
+
+## Developer Workflow
+Key commands include:
+- "devenv shell" activates the environment
+- "devenv up" starts background processes
+- "devenv test" validates the setup in CI environments
+- "devenv update" pins dependencies in a lockfile
+
+## Key Features & Capabilities
+- Languages: 50+ supported (Python, Rust, Go, PHP, Ruby with version management)
+- Packages: 100,000+ prebuilt packages across architectures
+- Services: PostgreSQL, Redis, MySQL, RabbitMQ, Elasticsearch, and 30+ others
+- Automation: Tasks, git hooks, declarative processes with dependency ordering
+- Composition: Multi-environment imports, profiles (by hostname/username),
+  selective activation
+- Testing: Integrated test runners with automatic process management
+- Secrets: Runtime retrieval from Keychain, 1Password, LastPass, dotenv
+- Containers: Generate shells and process containers from same definition
+- Ad-hoc: Command-line temporary environments without configuration files
+
+## AI/Agent Integration
+The documentation mentions "Claude Code" as an integration point, suggesting
+IDE/AI tool compatibility, though specific details aren't elaborated.

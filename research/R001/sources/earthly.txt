@@ -1,0 +1,93 @@
+# Earthly — key information
+
+SOURCE: https://earthly.dev and https://docs.earthly.dev/basics and
+https://docs.earthly.dev/basics/part-1-a-simple-earthfile
+
+## What It Is
+Earthly is "a build automation tool that uses docker containers to enforce build
+repeatability." The system targets both local development and CI environments.
+
+"Earthly's implicit caching and parallelism will make your builds repeatable
+and fast."
+
+Note: The earthly.dev homepage redirected to Earthly Lunar, which is described
+as a platform that converts engineering standards, compliance requirements, and
+incident response procedures into automated guardrails enforced across codebases
+and CI/CD pipelines.
+
+Earthly Lunar transforms manually-documented processes — AGENTS.md files,
+engineering wikis, postmortems, compliance mandates — into deterministic,
+code-based enforcement mechanisms that apply uniformly across repositories.
+
+"Deterministic Enforcement: Guardrails operate as executable code rather than
+prompts, ensuring consistent results. Same input, same output, every time.
+Trustworthy enough to actually block a PR or a deploy."
+
+Multi-Stage Enforcement: Policies apply across three lifecycle stages:
+- Code authoring (real-time agent self-correction)
+- Pull requests (automated checks with block/report options)
+- Deployment (gates validating repository compliance)
+
+Unified Standards: One policy set enforces uniformly across human developers
+and AI coding tools (Claude Code, Cursor, Codex), eliminating separate
+governance tracks.
+
+## Earthfile Format
+Earthfiles define build processes similarly to Dockerfiles but with enhanced
+capabilities. They're named "Earthfile" regardless of location and start with
+a VERSION declaration for compatibility management.
+
+Core Structure:
+- Base Target & Inheritance: The initial commands (typically FROM and WORKDIR)
+  create an implicit base target that all other targets inherit from unless
+  they specify their own environment.
+- Targets: "Targets are just sets of instructions we can call on from within
+  the Earthfile, or when we run Earthly at the command line." Targets are
+  invoked via the command line with "earthly +targetname".
+
+Essential Commands:
+- FROM: Specifies the Docker image environment.
+- COPY: Two variants: standard (from build context) or cross-target
+  ("COPY +build/example ." passes artifacts between targets).
+- RUN: Executes commands within the build environment.
+- SAVE ARTIFACT: Exports build outputs: "SAVE ARTIFACT output/example [/path]"
+- SAVE IMAGE: Creates Docker images.
+
+## Key Principles
+Isolation & Hermeticity: Only declared dependencies between targets are shared;
+otherwise builds remain completely isolated. "The rest is completely isolated."
+
+Deduplication: Shared base targets execute only once despite multiple dependents.
+
+Atomicity: "A build either succeeds completely or it fails altogether," with
+outputs written only upon success.
+
+Parallelization: Independent build steps execute in parallel automatically.
+
+## Learning Structure
+The basics tutorial is organized into 8 sequential parts:
+1. A simple Earthfile
+2. Outputs
+3. Adding dependencies with caching
+4. Args
+5. Importing
+6. Using Docker in Earthly
+7. Using remote runners
+8. Using Earthly in CI
+
+## AI Integration (Earthly Lunar)
+The platform includes 200+ pre-configured guardrails covering security,
+compliance, reliability, and operational readiness domains.
+
+"Unified Standards: One policy set enforces uniformly across human developers
+and AI coding tools (Claude Code, Cursor, Codex), eliminating separate
+governance tracks."
+
+"Central Configuration: Deploy once to cover all repositories — no per-team
+opt-in or template drift management required."
+
+"Gradual Rollout: Policies progress from visibility-only to comment-based
+feedback to blocking enforcement, adjustable centrally."
+
+Platform teams report eliminating accidental rubber-stamping, enforcing 30x
+more standards, and reducing compliance review by 90%.

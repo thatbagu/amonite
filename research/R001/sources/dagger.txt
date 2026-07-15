@@ -1,0 +1,78 @@
+# Dagger — key information
+
+SOURCE: https://dagger.io and https://docs.dagger.io/quickstart and https://docs.dagger.io/features/caching
+
+## What It Is
+Dagger is a programmable platform for building, testing, and deploying codebases
+repeatably at scale. It functions as a complete orchestration system with runtime,
+system API, SDKs for 8 languages, and interactive REPL capabilities.
+
+"Shell scripts and proprietary YAML are no longer an acceptable developer
+experience" for test automation. Dagger replaces these with proper programming
+language support.
+
+## Spec / Pipeline Definition Format
+Dagger enables workflow composition through function chaining using the pipe
+operator (|). As stated: "Dagger works by expressing workflows as combinations
+of functions from the Dagger API." Developers can either use Dagger Shell
+(interactive CLI) or write custom functions in Go, Python, TypeScript, PHP,
+or Java.
+
+Interactive Shell Example:
+  container | from alpine | with-exec uname | stdout
+
+Developers encapsulate workflows into custom Dagger Functions using type-safe
+SDKs, enabling reusable and shareable modules.
+
+## Key Developer Features
+- Type-Safe Development: "IDE Integration...gives you automatic type-checking,
+  code completion" when working with Dagger SDKs.
+- Sandboxing: "Host resources must be explicitly passed to Dagger Functions as
+  arguments," improving security and reproducibility.
+- Cross-Language Support: "Dagger Functions can call other Dagger Functions,
+  across languages."
+
+## Containerization & Execution
+Dagger requires a container runtime (Docker, Podman, nerdctl, or Apple Container).
+Pipelines interact with containers through methods like From(), WithExec(),
+WithMountedCache(), and Publish().
+
+## Hermeticity & Caching
+Dagger implements three primary caching mechanisms to optimize workflow performance:
+
+Layer Caching: "Layers" are step-wise instructions and arguments in container
+image builds. Dagger automatically caches each layer, then checks for existing
+layers before rebuilding. If inputs remain unchanged, cached layers are
+automatically reused.
+
+Volume Caching: This mechanism persists filesystem contents across sessions,
+benefiting package managers like npm, maven, and pip. Rather than
+re-downloading identical dependencies locked to specific versions, Dagger reuses
+cached directory contents across workflow runs.
+
+Function Call Caching: Function return values can be cached to skip execution
+when cached results exist for identical function calls.
+
+"One of Dagger's most powerful features is its speed, by virtue of its ability
+to cache data across workflow runs."
+
+The documentation references a "Sandboxed Runtime" feature as a core capability.
+
+## Verification & Repeatability
+Designed for reliability through containerized tests, sandboxed function
+orchestration, explicit typed dependencies, just-in-time artifact building,
+and fine-grained cache control by default.
+
+Local execution is a core feature: Dagger executes reliably across laptops,
+CI servers, and cloud infrastructure with only a recent Linux kernel as dependency.
+
+## Observability
+Two integrated tools: the Terminal UI (real-time visualization during execution)
+and Dagger Cloud (browser-based tracing and debugging interface).
+Built-in tracing, logs, and metrics for debugging workflows immediately rather
+than parsing text log walls.
+
+## AI/Agent Integration
+No specific AI/agent integration features are documented on the fetched pages.
+Notable users include Ubisoft, CERN OpenLab, Grafana Labs, Adobe, NVIDIA,
+Databricks.

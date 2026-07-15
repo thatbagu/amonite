@@ -1,0 +1,73 @@
+# flake-parts — key information
+
+SOURCE: https://flake.parts and https://flake.parts/options/flake-parts.html
+
+## What It Is
+"flake-parts is the core of a distributed framework for writing Nix Flakes."
+It provides standard flake attributes and establishes a system-centric workflow
+while remaining intentionally minimal — a single module that mirrors the Nix
+flake schema without built-in opinionated features.
+
+The framework enables configuration refactoring through Nix's module system,
+allowing developers to split flake definitions into reusable, focused units.
+This reduces custom Nix boilerplate similar to how NixOS's module system
+benefits configuration management.
+
+One developer stated: "It is definitely the best Flake framework and it is
+simply out of this world!"
+
+## Core Purpose
+- Modularize "flake.nix" across multiple files
+- Handle system-level concerns systematically
+- Enable library flakes to integrate outputs into downstream flakes
+- Support reusable project logic across repositories
+
+## Philosophy
+Unlike monolithic alternatives, flake-parts maintains a decentralized approach
+— a single baseline module that other repositories build upon while preserving
+compatibility with core flake attributes.
+
+## Module System & Structure
+The framework centers on the "perSystem" option — a function that transforms
+system-specific configurations into flake outputs. This enables declaring
+packages, development shells, checks, and apps in a system-aware manner.
+
+perSystem: Described as "A function from system to flake-like attributes
+omitting the '<system>' attribute," this is the primary organizational unit.
+Modules defined here access suboptions and convenient module arguments specific
+to each system.
+
+Transposition: The framework handles the "operation that swaps the indices"
+between per-system definitions and output structure — converting
+"perSystem.${system}.attribute" into "outputs.attribute.${system}".
+
+## Core Output Categories
+- Packages: Built via "nix build .#<name>", supporting nested attributes with
+  dot notation.
+- Apps: Runnable programs via "nix run .#<name>", with metadata standardization.
+- Dev Shells: Development environments accessed through "nix develop .#<name>".
+- Checks: Derivations validated by "nix flake check".
+- Formatters: Tools for "nix fmt" operations.
+- Legacy Packages: Unmergeable nested attribute sets.
+
+## Verification & Processing
+"processedFlake" (read-only) represents the final output distinct from internal
+"flake" definitions. This separation allows attributes to exist internally while
+being selectively exposed or transformed for tool compatibility — crucial for
+passing "nix flake check".
+
+## Debugging Capabilities
+When enabled, the "debug" option exposes "allSystems.<system>" and
+"currentSystem" attributes containing "_module", "config", "options", and
+"extendModules" fields, facilitating introspection via "nix repl".
+
+## Spec / Configuration Format
+flake-parts uses Nix's module system as its configuration language. There is
+no separate spec format — the flake.nix itself, split across modules via the
+NixOS module system, is the spec. Modules declare options and implement them;
+the framework does not impose workflow stages, acceptance criteria, or
+task decomposition.
+
+## AI/Agent Integration
+No AI or agent integration features are documented in the fetched pages.
+flake-parts is a low-level Nix utility that other tools may build upon.

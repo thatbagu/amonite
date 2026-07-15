@@ -1,0 +1,47 @@
+SOURCE: Reproducible Builds — Definition
+URL: https://reproducible-builds.org/docs/definition/
+Fetched: 2026-07-15
+
+PRIMARY DEFINITION:
+A build achieves reproducibility when "given the same source code, build environment and build instructions, any party can recreate bit-by-bit identical copies of all specified artifacts."
+
+KEY COMPONENTS:
+
+Source Code: This refers to code obtained from version control systems at specific revisions or from source archives.
+
+Build Environment: The relevant attributes encompass dependencies with their versions, configuration flags, and environment variables utilized by the build system (such as locale settings). The goal involves minimizing this attribute set where feasible.
+
+Artifacts: These constitute the primary outputs — executables, distribution packages, or filesystem images. Build logs and similar secondary outputs typically fall outside this category.
+
+Verification: The reproducibility of artifacts undergoes verification through cryptographically secure hash functions performing bit-by-bit comparisons.
+
+Authors and Distributors: These parties claim reproducibility of artifact sets and may include upstream authors, distribution maintainers, or other distributors.
+
+SIGNIFICANCE:
+The site emphasizes that the authors or distributors themselves define relevant build environment attributes, build instructions, source code characteristics, and expected reproducible artifacts. This framework enables independent verification that builds consistently produce identical results across different parties and environments.
+
+---
+
+SOURCE: Reproducible Builds — Why It Matters
+URL: https://reproducible-builds.org/docs/why/
+Fetched: 2026-07-15
+
+SECURITY AGAINST COMPILER ATTACKS:
+Reproducible builds protect against malicious modifications to build tools. The document cites the "Strawhorse" CIA program and XcodeGhost malware as real-world examples where "malicious code is located in a Mach-O object file that was repackaged into some versions of Xcode installers."
+
+Recompiling with clean tools makes tampering visible. As the content explains, subtle attacks — even single-bit modifications — could create exploitable vulnerabilities. "Reproducible builds are the only way to detect them early," including kernel-level threats that wouldn't leave disk traces.
+
+QUALITY ASSURANCE BENEFITS:
+Regular testing across varied environments prevents build failures and uncovers rare bugs like race conditions, timing issues, and locale problems. The document references specific Debian discoveries: library ABI variations, encoding mismatches, missing translations, and dependency shifts — issues that emerge only through environmental variation testing.
+
+EFFICIENCY GAINS:
+Binary differences shrink to only source and compiler changes, reducing storage and network demands. Development accelerates because dependent packages don't require rebuilding when outputs remain identical. Cross-compilation can be validated against native builds, enabling faster builds on superior hardware.
+
+TRUST AND VERIFICATION:
+The document addresses compiler backdoors via "Diverse Double-Compilation" — a technique verifying compiler integrity by rebuilding it twice. This only works when outputs match consistently, making reproducible builds essential infrastructure for trustworthiness.
+
+DEPENDENCY TRANSPARENCY:
+Reproducible builds enable accurate Software Bill of Materials (SBOM) creation and complete dependency awareness, supporting regulatory compliance and vulnerability management.
+
+REAL-WORLD EXAMPLES OF VULNERABILITIES CAUGHT:
+The document references XcodeGhost malware and the CIA's "Strawhorse" program as examples of attacks on build infrastructure that reproducible builds would have made detectable. The attack vectors involved inserting malicious code into build tools and repackaged installers.
