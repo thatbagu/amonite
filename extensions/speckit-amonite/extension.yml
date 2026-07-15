@@ -1,0 +1,57 @@
+schema_version: "1.0"
+
+extension:
+  id: amonite
+  name: amonite Nix Verification
+  version: "0.2.0"
+  description: "Compile Spec Kit tasks to Nix derivations — hermetic acceptance criteria baked into each build."
+  author: thatbagu
+  repository: https://github.com/thatbagu/amonite
+  license: MIT
+  homepage: https://thatbagu.github.io/amonite/
+
+requires:
+  speckit_version: ">=0.12.0"
+  tools:
+    - name: nix
+      required: true
+      version: ">=2.18"
+    - name: amonite
+      required: true
+
+provides:
+  commands:
+    - name: speckit.amonite.capsule
+      file: commands/speckit.amonite.capsule.md
+      description: "Scaffold amonite task capsules (tasks/TNNN/) from tasks.md entries for hermetic Nix verification"
+
+    - name: speckit.amonite.verify
+      file: commands/speckit.amonite.verify.md
+      description: "Run amonite verify — build every task derivation and report which have passed their acceptance criteria"
+
+# These hooks wire amonite into the Spec Kit workflow automatically.
+# After /speckit.tasks → suggest scaffolding capsules.
+# After /speckit.implement → suggest running hermetic verification.
+# Both are optional: users who prefer manual verification can skip them.
+hooks:
+  after_tasks:
+    command: speckit.amonite.capsule
+    optional: true
+    prompt: "Scaffold amonite Nix capsules for each task — enables hermetic, reproducible verification"
+    description: "Creates tasks/TNNN/{flake.nix,task.nix} so each task can be verified in an isolated Nix sandbox"
+
+  after_implement:
+    command: speckit.amonite.verify
+    optional: true
+    prompt: "Run amonite verify all — confirm every task derivation builds and its acceptance criteria pass"
+    description: "A task that exists in the Nix store has passed its checks. Run this to produce the verified APP generation."
+
+tags:
+  - verification
+  - nix
+  - hermetic
+  - reproducible
+  - spec-driven
+
+defaults:
+  verify_scope: "all"   # "all" = nix flake check; override with task/cluster id in command args
