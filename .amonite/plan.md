@@ -1,6 +1,6 @@
-# Implementation Plan: amonite v0.2 — self-improvement sprint
+# Implementation Plan: amonite v0.3 — hierarchical clusters
 
-**Spec**: .amonite/spec.md · **Principles check**: pass — updated for US6/US7 (P1/P2/P3, E1–E4, N1–N3 all satisfied)
+**Spec**: .amonite/spec.md · **Principles check**: pass — updated for US11 (P1/P2/P3, E1–E4, N1–N3 all satisfied; N2: no new lib functions)
 
 ## Technical context
 
@@ -134,6 +134,99 @@ Eight independent deliverables that share no runtime coupling:
                          T014 (AlignScore weights derivation), T015 (NLI verify + fixtures)
                          wave 1: T012, T013, T014 (parallel); wave 2: T015 (depends on all three)
 - APP                  ← C001, C002, C003, C004, C005, C006
+
+## US11 — Hierarchical cluster composition
+
+### Analysis of current state
+
+`mkCluster` already accepts any derivation in its `tasks` list and adds them
+all as `buildInputs`, so Nix already enforces ordering for sub-clusters. The
+member-link loop already resolves names via `t.amonite.id or t.name`, so
+clusters nest structurally.
+
+Two things are missing:
+
+1. **`mkGraph` is flat** — it takes `{ tasks, clusters }` (the top-level
+   attrsets) and emits one flat list. Sub-clusters that live only *inside*
+   a parent cluster (not exported from `clusters.nix` as top-level entries)
+   are invisible to the graph and therefore to the TUI.
+2. **No three-level fixture** — the spec requires a grandparent →
+   cluster → tasks hierarchy to be demonstrable end-to-end.
+
+### Architecture for US11
+
+**Component 9 — recursive mkGraph (nix/lib.nix)**
+
+`mkGraph` is extended to walk the cluster member graph depth-first, collecting
+every node (task or cluster) it encounters at any depth. Deduplication by ID
+handles clusters that appear as members of more than one parent.
+
+```nix
+mkGraph = { tasks, clusters }:
+  let
+    collectNodes = d:
+      let thisNode = { id = …; members = …; … };
+      in [ thisNode ] ++ lib.concatMap collectNodes (d.amonite.tasks or []);
+    allNodes = lib.concatMap collectNodes (lib.attrValues (tasks // clusters));
+    dedup    = ns: lib.attrValues (lib.listToAttrs (map (n: { name = n.id; value = n; }) ns));
+  in { nodes = dedup allNodes; };
+```
+
+This change is backward-compatible: the existing flat topology already works,
+and any depth of nesting is handled identically.
+
+**Component 10 — three-level fixture (clusters.nix)**
+
+Two new fixture clusters are added to `clusters.nix` alongside the existing
+C001–C006:
+
+- `C007 "hierarchy-leaf"` — a cluster wrapping tasks T001 + T003 (already
+  built tasks reused as members).
+- `C008 "hierarchy-root"` — a cluster wrapping C007 (a cluster) and T002,
+  demonstrating a grandparent (C008) → cluster (C007) → tasks topology.
+
+Both are returned from `clusters.nix` so they appear in `packages.cluster-C007`
+and `packages.cluster-C008` and are independently `amonite verify`-able.
+
+C008's integration `verify` block confirms it can see T001's artifact through
+the two-level link chain (`$out/tasks/C007/tasks/T001/artifact.txt`), proving
+the nesting is structurally sound — not just that the build succeeded.
+
+### Verification strategy (US11 additions)
+
+| What | How | Hermetic? |
+|------|-----|-----------|
+| mkGraph emits sub-cluster nodes | nix eval graph.x86_64-linux.nodes — count includes C007 and C008 | yes |
+| parent cluster fails when sub-cluster fails | fixture with bad verify in sub-cluster → parent build exits non-zero | yes |
+| amonite verify C007 works | nix build .#cluster-C007 exits 0 | yes |
+| amonite verify C008 works | nix build .#cluster-C008 exits 0 | yes |
+| three-level artifact chain | C008 verify reads artifact through C008→C007→T001 symlinks | yes |
+| tui --dump shows full tree | amonite tui --dump output contains C007 and C008 | yes |
+
+### Cluster topology (US11 additions)
+
+```
+C007 hierarchy-leaf  ← T001, T003       (reuse existing tasks)
+C008 hierarchy-root  ← C007, T002       (cluster-of-cluster)
+```
+
+Both feed into `nix flake check` via `checks.lib-cluster` and `packages`.
+APP is unchanged — C007/C008 are standalone fixtures, not wired into APP.
+
+### Task decomposition (US11)
+
+**C007-hierarchy cluster** (new — parallel where noted):
+
+- T016 [P] Recursive mkGraph: update `nix/lib.nix` mkGraph to collect all
+  nodes recursively; verify: nix eval confirms C007+C008 appear in graph nodes
+  after fixture is added.
+- T017 [P] Three-level fixture: add C007 + C008 to `clusters.nix`; expose
+  in flake packages + checks; verify: (1) nix build .#cluster-C008 exits 0,
+  (2) C008's verify block confirms artifact readable through two symlink levels,
+  (3) amonite tui --dump output contains "C007" and "C008".
+
+Wave 1: T016 + T017 (both touch different files — lib.nix vs clusters.nix;
+parallel is safe). C007-hierarchy cluster builds after both.
 
 ## Risks / complexity
 

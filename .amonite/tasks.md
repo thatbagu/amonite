@@ -1,4 +1,4 @@
-# Tasks: amonite v0.2 — self-improvement sprint
+# Tasks: amonite v0.3 — hierarchical clusters (US11)
 
 **Plan**: .amonite/plan.md
 
@@ -143,6 +143,26 @@ Format: `[ID] [P?] [Cluster] Title — env grants`
         threshold-config-accepted: tfidfThreshold present in flake.nix or nix/
         deterministic: two builds of research-fixture produce same store path
 
+## C007-hierarchy: hierarchical cluster composition (US11)
+
+- [x] T016 [P] [C007-hierarchy] Recursive mkGraph in nix/lib.nix ● — env: pkgs.nix pkgs.coreutils
+      verify:
+        mkgraph-is-fn: nix eval confirms mkGraph is a lambda in the updated lib.nix
+        recurses-into-members: inline fixture with a cluster-of-cluster evaluates; nix eval
+          on the graph output shows child cluster node present in nodes list
+        dedup-stable: a cluster referenced as member of two parents appears exactly once
+          in the nodes list (nix eval confirms count = 1)
+        nix-flake-evaluates: nix flake check --dry-run exits 0 (evaluation only)
+
+- [x] T017 [P] [C007-hierarchy] Three-level cluster fixture in clusters.nix ● — env: pkgs.nix pkgs.coreutils
+      verify:
+        clusters-nix-has-c007: grep -q '"C007"' clusters.nix (or id = "C007")
+        clusters-nix-has-c008: grep -q '"C008"' clusters.nix (or id = "C008")
+        c007-evaluates: nix eval .#packages.x86_64-linux.cluster-C007 --impure exits 0
+        c008-evaluates: nix eval .#packages.x86_64-linux.cluster-C008 --impure exits 0
+        graph-has-c007: nix eval .#graph.x86_64-linux.nodes --json | grep -q '"C007"'
+        graph-has-c008: nix eval .#graph.x86_64-linux.nodes --json | grep -q '"C008"'
+
 ## Cluster verifications
 
 - C001: T001, T002, T005 build; `amonite status` runs; `amonite waves` reads graph; shellcheck clean.
@@ -151,6 +171,7 @@ Format: `[ID] [P?] [Cluster] Title — env grants`
 - C004: ci.yml (matrix+cachix+flake check), release-please.yml, release.yml, CHANGELOG.md, CONTRIBUTING.md all present and correct.
 - C005: TUI builds; wave view responds to `w` key; no-graph message shown when task-graph.json absent.
 - C006: T012+T013+T014+T015 build; mkResearchTask in lib.nix; TF-IDF and NLI scripts present; good fixture passes, bad fixture fails.
+- C007-hierarchy: T016+T017 build; mkGraph recursion verified by nix eval; C007 and C008 fixture clusters build and verify; C008's verify reads T001 artifact through the two-level symlink chain; `amonite tui --dump` output contains C007 and C008.
 - APP: C001+C002+C003+C004+C005+C006 verified; `amonite --help` lists all subcommands; mkResearchTask present in lib.nix.
 
 ## gate.live (impure, manual)

@@ -244,6 +244,37 @@ until the VM test passes, exactly like any other task.
 - [ ] `nix flake check` exits 0 on x86_64-linux.
 - [ ] The architecture docs list mkVmVerify as the 5th lib function.
 
+### US11 (P1): Hierarchical cluster composition — clusters of clusters
+
+As a project lead managing a large system, I want to compose clusters into
+larger clusters without limit, so that I can model any decomposition depth
+the project requires without hitting a framework ceiling.
+
+The composition rule must be uniform: a cluster of clusters behaves exactly
+like a cluster of tasks — it verifies its members before it can build, and
+the full derivation graph reflects every node at every depth.  No new lib
+functions are introduced; mkCluster handles tasks and sub-clusters
+identically.
+
+**Done when** (observable, will compile into cluster verifications):
+
+- [ ] `mkCluster { members = [ clusterA clusterB ]; }` evaluates to a valid
+  Nix derivation and is accepted by `nix flake check` without error.
+- [ ] A parent cluster whose sub-cluster has a failing verify criterion also
+  fails to build: the parent derivation exits non-zero and the log names the
+  failing member cluster.
+- [ ] `amonite verify CNNN` works on any cluster at any nesting depth:
+  verifying a grandparent cluster transitively verifies every descendant
+  cluster and task.
+- [ ] The `graph.<system>` flake output includes every node (task and cluster)
+  at every nesting depth; running `amonite tui --dump` shows the full
+  hierarchy with no nodes missing.
+- [ ] Three-level nesting is demonstrated end-to-end via a fixture in
+  `clusters.nix`: a grandparent cluster whose members include at least one
+  cluster that itself has task members; all three levels build and verify.
+- [ ] `nix flake check` exits 0 after all changes (N1).
+- [ ] No new lib functions are added (N2: surface stays at five).
+
 ## Out of scope
 
 - Home-manager module (separate PR after nixpkgs submission).

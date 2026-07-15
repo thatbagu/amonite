@@ -197,22 +197,34 @@ rec {
   # Serializable task/cluster graph for tooling (amonite tui).
   # outPath is the derivation's store path WITHOUT building it, so a
   # consumer can test existence to learn verified-vs-pending.
+  #
+  # mkGraph recurses into cluster members so sub-clusters at any nesting
+  # depth appear as first-class nodes. A cluster can appear as a member of
+  # multiple parents; deduplication by id keeps the flat node list clean.
   mkGraph = { tasks, clusters }:
     let
-      node = attrName: d: {
-        id = d.amonite.id or attrName;
+      nodeOf = d: {
+        id    = d.amonite.id or d.name;
         title = d.amonite.title or d.name;
-        kind = d.amonite.kind or "task";
+        kind  = d.amonite.kind or "task";
         # NOT named outPath: that would make nix eval --json collapse the
         # node to a bare string (derivation-like attrset semantics).
-        store = "${d}";
+        store   = "${d}";
         members = map (m: m.amonite.id or m.name) (d.amonite.tasks or [ ]);
         # Informational task dependencies for wave computation (tasks only).
         depends = d.amonite.depends or [ ];
       };
+      # Depth-first walk: yields this node then all descendant nodes.
+      collectAll = d:
+        [ (nodeOf d) ] ++
+        lib.concatMap collectAll (d.amonite.tasks or [ ]);
+      # Deduplicate by id (fold preserves last-wins; all copies are identical).
+      dedup = ns:
+        lib.attrValues
+          (lib.foldl' (acc: n: acc // { ${n.id} = n; }) { } ns);
     in
     {
-      nodes = lib.mapAttrsToList node (tasks // clusters);
+      nodes = dedup (lib.concatMap collectAll (lib.attrValues (tasks // clusters)));
     };
 
   # Load every tasks/*/task.nix under a project root and return
