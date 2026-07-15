@@ -5,8 +5,14 @@
 
 ## Product principles
 
-- P1: [REPLACE — e.g. "Offline-first: every feature must work without network"]
-- P2: [REPLACE]
+- P1: Minimal surface — amonite's power comes from the Nix model, not feature
+  accumulation. Every addition must justify itself against the stated non-goals
+  in docs/architecture.md. When in doubt, reject.
+- P2: Self-applicable — amonite must be buildable and verifiable by amonite
+  itself. Dogfooding is a first-class invariant; any change that breaks the
+  self-build breaks the project.
+- P3: Distribution follows the user — target users are Nix users. The
+  canonical install paths are nixpkgs and nix flakes; no Python, no npm.
 
 ## Engineering principles
 
@@ -16,10 +22,15 @@
   boundary explicitly in the plan (see `gate.live` in plan.md).
 - E3: Toolchain grants are minimal: a task's `env` lists only what that
   task needs. Widening an env is a plan change, not an implementation detail.
-- E4: [REPLACE — project-specific: language, style, testing norms]
+- E4: The CLI runtime is bash + Go; the Nix lib is pure Nix. No new language
+  runtimes. If a feature requires Python/Node/Ruby it is the wrong feature.
 
 ## Non-negotiables
 
 - N1: `nix flake check` green on the project root before any cluster is
   declared complete.
-- N2: [REPLACE — e.g. "no network calls in build/verify phases"]
+- N2: The lib surface stays at three functions: mkTask, mkCluster,
+  mkApplication. New capability goes into derivation semantics or CLI
+  commands, not new lib functions.
+- N3: shellcheck must pass on bin/amonite at all times; it is part of
+  the nix flake check suite.

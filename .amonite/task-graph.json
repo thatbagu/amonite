@@ -1,0 +1,25 @@
+{
+  "waves": [
+    {
+      "wave": 1,
+      "tasks": [
+        { "id": "T001", "title": "CLI --flow-only flag and error hint", "cluster": "C001", "depends": [] },
+        { "id": "T002", "title": "CLI UX guards and tty-aware status colour", "cluster": "C001", "depends": [] },
+        { "id": "T003", "title": "nixpkgs-convention package.nix", "cluster": "C002", "depends": [] },
+        { "id": "T004", "title": "Shell completions (bash, zsh, fish)", "cluster": "C002", "depends": [] },
+        { "id": "T006", "title": "mdBook docs content", "cluster": "C003", "depends": [] },
+        { "id": "T007", "title": "GitHub Pages docs CI workflow", "cluster": "C003", "depends": [] },
+        { "id": "T008", "title": "PR CI gate workflow (nix flake check, matrix, Cachix)", "cluster": "C004", "depends": [] },
+        { "id": "T009", "title": "Release workflow + CHANGELOG + CONTRIBUTING", "cluster": "C004", "depends": [] },
+        { "id": "T010", "title": "release-please automated release pipeline", "cluster": "C004", "depends": [] },
+        { "id": "T011", "title": "TUI wave view", "cluster": "C005", "depends": [] }
+      ]
+    },
+    {
+      "wave": 2,
+      "tasks": [
+        { "id": "T005", "title": "Parallel-agent wave planner (task-graph.json + amonite waves)", "cluster": "C001", "depends": ["T001", "T002"] }
+      ]
+    }
+  ]
+}

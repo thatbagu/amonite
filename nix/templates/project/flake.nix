@@ -29,8 +29,9 @@
     {
       devShells = forAllSystems (pkgs: {
         default = pkgs.mkShell {
-          packages = with pkgs; [
-            git
+          packages = [
+            amonite.packages.${pkgs.system}.default  # amonite CLI always available
+            pkgs.git
             # amonite:toolchain (managed by /amonite.plan — project-wide
             # packages are added here after the plan fixes the tech stack;
             # keep minimal until then)

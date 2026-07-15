@@ -1,8 +1,11 @@
-// amonite tui — derivation hierarchy viewer.
+// amonite tui — derivation hierarchy viewer + wave view.
 //
 // Reads the project's `graph.<system>` flake output, renders the
 // task→cluster→APP tree with verified/pending state (a node is verified
 // iff its store path exists), and lets you verify nodes in place.
+//
+// Press "w" to toggle the wave view which reads .amonite/task-graph.json
+// and groups tasks by wave number with live verification state.
 package main
 
 import (
@@ -38,17 +41,50 @@ type row struct {
 	indent string // precomputed ancestor continuation prefix
 }
 
+// waveTask is one task entry from task-graph.json.
+type waveTask struct {
+	ID      string   `json:"id"`
+	Title   string   `json:"title"`
+	Cluster string   `json:"cluster"`
+	Depends []string `json:"depends"`
+}
+
+// waveEntry is one wave from task-graph.json.
+type waveEntry struct {
+	Wave  int        `json:"wave"`
+	Tasks []waveTask `json:"tasks"`
+}
+
+// waveGraph is the top-level structure of .amonite/task-graph.json.
+type waveGraph struct {
+	Waves []waveEntry `json:"waves"`
+}
+
+// viewMode selects which view is active.
+type viewMode int
+
+const (
+	viewTree viewMode = iota
+	viewWave
+)
+
 type model struct {
-	rows     []row
-	cursor   int
-	building bool
-	status   string
-	err      string
+	rows      []row
+	cursor    int
+	building  bool
+	status    string
+	err       string
+	noGraph   bool
+	mode      viewMode
+	waveGraph *waveGraph        // nil if task-graph.json absent or unreadable
+	storeByID map[string]string // task ID → store path (from nix graph)
 }
 
 type graphMsg struct {
-	rows []row
-	err  error
+	rows      []row
+	storeByID map[string]string
+	err       error
+	noGraph   bool
 }
 
 type buildDoneMsg struct {
@@ -70,13 +106,38 @@ func loadGraph() tea.Msg {
 		if ok := asExitError(err, &ee); ok {
 			detail = strings.TrimSpace(string(ee.Stderr))
 		}
+		// Friendly message when the project hasn't defined a graph output yet.
+		if strings.Contains(detail, "attribute 'graph' missing") ||
+			strings.Contains(detail, "does not provide attribute") {
+			return graphMsg{noGraph: true}
+		}
 		return graphMsg{err: fmt.Errorf("nix eval failed: %s", lastLine(detail))}
 	}
 	var g graph
 	if err := json.Unmarshal(out, &g); err != nil {
 		return graphMsg{err: err}
 	}
-	return graphMsg{rows: layout(g)}
+	// Build store lookup by task ID for wave view cross-referencing.
+	storeByID := map[string]string{}
+	for _, n := range g.Nodes {
+		if n.Store != "" {
+			storeByID[n.ID] = n.Store
+		}
+	}
+	return graphMsg{rows: layout(g), storeByID: storeByID}
+}
+
+// loadWaveGraph reads .amonite/task-graph.json and returns parsed data or nil.
+func loadWaveGraph() *waveGraph {
+	data, err := os.ReadFile(".amonite/task-graph.json")
+	if err != nil {
+		return nil
+	}
+	var wg waveGraph
+	if err := json.Unmarshal(data, &wg); err != nil {
+		return nil
+	}
+	return &wg
 }
 
 func asExitError(err error, target **exec.ExitError) bool {
@@ -156,6 +217,15 @@ func verified(n node) bool {
 	return err == nil
 }
 
+// statePath checks whether a Nix store path exists on disk.
+func statePath(storePath string) bool {
+	if storePath == "" {
+		return false
+	}
+	_, err := os.Stat(storePath)
+	return err == nil
+}
+
 func (m model) buildCmd(target string) tea.Cmd {
 	return func() tea.Msg {
 		attr := ".#task-" + target
@@ -186,11 +256,18 @@ func (m model) Init() tea.Cmd { return loadGraph }
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case graphMsg:
-		if msg.err != nil {
+		if msg.noGraph {
+			m.noGraph = true
+			m.err = ""
+		} else if msg.err != nil {
 			m.err = msg.err.Error()
 		} else {
+			m.noGraph = false
 			m.err = ""
 			m.rows = msg.rows
+			if msg.storeByID != nil {
+				m.storeByID = msg.storeByID
+			}
 			if m.cursor >= len(m.rows) {
 				m.cursor = 0
 			}
@@ -221,6 +298,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			m.status = "refreshing…"
 			return m, loadGraph
+		case "w":
+			// Toggle between tree and wave view; load task-graph.json on switch.
+			if m.mode == viewTree {
+				m.mode = viewWave
+				m.waveGraph = loadWaveGraph()
+			} else {
+				m.mode = viewTree
+			}
 		case "enter", "v":
 			if m.building || len(m.rows) == 0 {
 				return m, nil
@@ -242,9 +327,47 @@ var (
 	titleStyle   = lipgloss.NewStyle().Bold(true)
 	errStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	helpStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	waveStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3"))
 )
 
+func (m model) waveView() string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("amonite — wave view") + "\n\n")
+
+	if m.waveGraph == nil {
+		b.WriteString(errStyle.Render("no task-graph.json — run /amonite.plan first") + "\n")
+	} else {
+		for _, we := range m.waveGraph.Waves {
+			b.WriteString(waveStyle.Render(fmt.Sprintf("Wave %d (%d tasks)", we.Wave, len(we.Tasks))) + "\n")
+			for _, t := range we.Tasks {
+				storePath := m.storeByID[t.ID]
+				mark := pendingStyle.Render("○")
+				if statePath(storePath) {
+					mark = okStyle.Render("●")
+				}
+				line := fmt.Sprintf("  %s %s  %s  %s",
+					mark,
+					kindStyle.Render(t.ID),
+					pendingStyle.Render(t.Cluster),
+					t.Title)
+				b.WriteString(line + "\n")
+			}
+		}
+	}
+
+	b.WriteString("\n")
+	if m.status != "" {
+		b.WriteString(m.status + "\n")
+	}
+	b.WriteString(helpStyle.Render("w tree view · r refresh · q quit") + "\n")
+	return b.String()
+}
+
 func (m model) View() string {
+	if m.mode == viewWave {
+		return m.waveView()
+	}
+
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("amonite — derivation hierarchy") + "\n\n")
 
@@ -281,7 +404,10 @@ func (m model) View() string {
 		b.WriteString(line + "\n")
 	}
 
-	if len(m.rows) == 0 && m.err == "" {
+	if m.noGraph {
+		b.WriteString(pendingStyle.Render("no graph yet") + "\n")
+		b.WriteString(helpStyle.Render("run /amonite.plan → /amonite.tasks to generate the derivation hierarchy") + "\n")
+	} else if len(m.rows) == 0 && m.err == "" {
 		b.WriteString(pendingStyle.Render("loading graph…") + "\n")
 	}
 
@@ -289,7 +415,7 @@ func (m model) View() string {
 	if m.status != "" {
 		b.WriteString(m.status + "\n")
 	}
-	b.WriteString(helpStyle.Render("↑/↓ move · enter verify · r refresh · q quit") + "\n")
+	b.WriteString(helpStyle.Render("↑/↓ move · enter verify · r refresh · w wave view · q quit") + "\n")
 	return b.String()
 }
 
@@ -302,7 +428,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, gm.err)
 			os.Exit(1)
 		}
-		m := model{rows: gm.rows}
+		m := model{rows: gm.rows, storeByID: gm.storeByID}
 		fmt.Print(m.View())
 		return
 	}

@@ -4,28 +4,73 @@
 { pkgs, amonite }:
 
 amonite.mkTask {
-  id = "T001"; # amonite task id, matches tasks.md
+  id = "T001";
   title = "CLI --flow-only flag and error hint";
 
-  # Source this task builds from. Usually the project root filtered to
-  # what the task may see — keep the aperture as narrow as possible.
-  # src = ../..;
+  src = ../..;
 
-  # Encapsulation boundary: everything this task's build and dev shell
-  # may use. Nothing else is available.
-  env = with pkgs; [
-    coreutils
-  ];
+  env = with pkgs; [ bash git shellcheck coreutils ];
 
-  # Build: produce the task's artifacts under $out.
   build = ''
-    echo "REPLACE with build steps" && exit 1
+    mkdir -p "$out/bin" "$out/templates" "$out/commands"
+    cp "$src/bin/amonite" "$out/bin/amonite"
+    cp -r "$src/templates/." "$out/templates/"
+    cp -r "$src/commands/." "$out/commands/"
+    cp -r "$src/nix" "$out/nix"
+    chmod +x "$out/bin/amonite"
   '';
 
-  # Acceptance criteria from tasks.md, made mechanical. Every entry must
-  # exit 0 or the task does not exist as a derivation.
   verify = {
-    # unit-tests = ''pytest tests/'';
-    # artifact = ''test -s "$out/thing"'';
+    shellcheck-clean = ''
+      shellcheck --shell=bash "$out/bin/amonite"
+    '';
+
+    flow-only-creates-amonite-dir = ''
+      tmp=$(mktemp -d)
+      cd "$tmp"
+      export HOME="$tmp"
+      git init -q
+      git config user.email "test@amonite"
+      git config user.name "amonite"
+      AMONITE_SHARE="$out" bash "$out/bin/amonite" init --flow-only
+      test -d .amonite
+    '';
+
+    flow-only-skips-flake = ''
+      tmp=$(mktemp -d)
+      cd "$tmp"
+      export HOME="$tmp"
+      git init -q
+      git config user.email "test@amonite"
+      git config user.name "amonite"
+      printf '{ outputs = _: {}; }' > flake.nix
+      git add flake.nix
+      AMONITE_SHARE="$out" bash "$out/bin/amonite" init --flow-only
+      grep -q 'outputs' flake.nix
+    '';
+
+    flow-only-idempotent = ''
+      tmp=$(mktemp -d)
+      cd "$tmp"
+      export HOME="$tmp"
+      git init -q
+      git config user.email "test@amonite"
+      git config user.name "amonite"
+      AMONITE_SHARE="$out" bash "$out/bin/amonite" init --flow-only
+      AMONITE_SHARE="$out" bash "$out/bin/amonite" init --flow-only
+    '';
+
+    existing-flake-hint = ''
+      tmp=$(mktemp -d)
+      cd "$tmp"
+      export HOME="$tmp"
+      git init -q
+      git config user.email "test@amonite"
+      git config user.name "amonite"
+      printf '{ outputs = _: {}; }' > flake.nix
+      git add flake.nix
+      msg=$(AMONITE_SHARE="$out" bash "$out/bin/amonite" init 2>&1 || true)
+      echo "$msg" | grep -q -- '--flow-only'
+    '';
   };
 }

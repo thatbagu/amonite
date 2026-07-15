@@ -27,23 +27,34 @@
         default = self.templates.project;
       };
 
-      packages = forAllSystems (pkgs: {
-        amonite-tui = pkgs.buildGoModule {
-          pname = "amonite-tui";
-          version = "0.1.0";
-          src = ./tui;
-          vendorHash = "sha256-vj6i7Uc5LXnOF3Gi/GKy+FQ/I6eSyt2kKgZl8C5u2MM=";
-          postInstall = ''mv "$out/bin/tui" "$out/bin/amonite-tui"'';
-        };
-        amonite = pkgs.writeShellApplication {
-          name = "amonite";
-          runtimeInputs = [ pkgs.git pkgs.jq self.packages.${pkgs.system}.amonite-tui ];
-          text = ''
-            export AMONITE_SHARE=${self}
-          '' + builtins.readFile ./bin/amonite;
-        };
-        default = self.packages.${pkgs.system}.amonite;
-      });
+      packages = forAllSystems (pkgs:
+        let
+          amonite-lib = self.lib { inherit pkgs; };
+          tasks    = amonite-lib.loadTasks { root = ./.; amonite = amonite-lib; };
+          clusters = import ./clusters.nix { inherit pkgs tasks; amonite = amonite-lib; };
+          pkg      = pkgs.callPackage ./package.nix { src = self; };
+        in
+        {
+          # package.nix is the single source of truth for the derivation and
+          # vendorHash; the flake just delegates to it.
+          amonite     = pkg;
+          amonite-tui = pkg.passthru.tui;
+          default     = pkg;  # installable CLI; APP is exposed as cluster-APP
+        }
+        # Expose task and cluster derivations for `amonite verify T001` / `amonite verify C001`
+        // (nixpkgs.lib.mapAttrs' (id: drv: { name = "task-${id}";    value = drv; }) tasks)
+        // (nixpkgs.lib.mapAttrs' (id: drv: { name = "cluster-${id}"; value = drv; }) clusters)
+      );
+
+      # Graph output consumed by `amonite tui`.
+      graph = forAllSystems (pkgs:
+        let
+          amonite-lib = self.lib { inherit pkgs; };
+          tasks    = amonite-lib.loadTasks { root = ./.; amonite = amonite-lib; };
+          clusters = import ./clusters.nix { inherit pkgs tasks; amonite = amonite-lib; };
+        in
+        amonite-lib.mkGraph { inherit tasks clusters; }
+      );
 
       apps = forAllSystems (pkgs: {
         default = {
@@ -57,7 +68,16 @@
       # toolchains in generated task flakes.
       devShells = forAllSystems (pkgs: {
         default = pkgs.mkShell {
-          packages = [ self.packages.${pkgs.system}.amonite pkgs.git pkgs.jq ];
+          # amonite:toolchain — kept minimal (principle E3); task-specific
+          # tools are granted per-task in their task.nix env lists.
+          packages = [
+            self.packages.${pkgs.system}.amonite
+            pkgs.git
+            pkgs.jq
+            pkgs.shellcheck  # bin/amonite linting (N3)
+            pkgs.go          # TUI development
+            pkgs.mdbook      # local docs builds (US6)
+          ];
         };
       });
 

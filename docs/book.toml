@@ -1,0 +1,7 @@
+[book]
+title = "amonite"
+authors = ["thatbagu"]
+language = "en"
+src = "."
+
+[output.html]

@@ -1,0 +1,61 @@
+#compdef amonite
+
+_amonite_verify_targets() {
+  local targets=(APP all)
+  if [[ -d tasks ]]; then
+    local task_ids
+    task_ids=( ${(f)"$(find tasks -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2>/dev/null | grep -E '^[TC][0-9]+')"} )
+    targets+=( $task_ids )
+  fi
+  compadd -a targets
+}
+
+_amonite_generations() {
+  if [[ -d .amonite/generations ]]; then
+    local gens
+    gens=( ${(f)"$(find .amonite/generations -maxdepth 1 -name '[0-9]*' ! -name '*.meta' -exec basename {} \; 2>/dev/null | sort -n)"} )
+    compadd -a gens
+  fi
+}
+
+_amonite() {
+  local state
+
+  _arguments \
+    '1: :->subcommand' \
+    '*:: :->args'
+
+  case $state in
+    subcommand)
+      local subcommands=(
+        'init:scaffold a project'
+        'task:manage task capsules'
+        'verify:build and verify a target'
+        'tui:interactive derivation-hierarchy viewer'
+        'generations:list APP generations'
+        'rollback:switch to a previous generation'
+        'status:show flow artifacts and current generation'
+        'help:show usage'
+      )
+      _describe 'subcommand' subcommands
+      ;;
+    args)
+      case ${words[1]} in
+        init)
+          _arguments '--flow-only[scaffold only the flow layer, skip the Nix layer]'
+          ;;
+        task)
+          _arguments '1: :(new)'
+          ;;
+        verify)
+          _amonite_verify_targets
+          ;;
+        rollback)
+          _amonite_generations
+          ;;
+      esac
+      ;;
+  esac
+}
+
+_amonite "$@"

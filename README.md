@@ -2,6 +2,8 @@
 
 **Spec-driven development that compiles to Nix derivations.**
 
+**[Documentation →](https://thatbagu.github.io/amonite/)**
+
 Spec Kit and its siblings verify agent work by having an LLM re-read the spec
 and vibe about compliance. amonite makes the verifiable core of the spec
 *mechanical*: every task is a Nix derivation whose acceptance criteria run

@@ -8,9 +8,10 @@
   description = "amonite task capsule";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    # nixpkgs is not pinned here — it follows the meta flake's pin
+    # transitively: project nixpkgs → amonite/nixpkgs → this capsule.
     amonite.url = "github:thatbagu/amonite";
-    amonite.inputs.nixpkgs.follows = "nixpkgs";
+    nixpkgs.follows = "amonite/nixpkgs";
   };
 
   outputs = { self, nixpkgs, amonite }:

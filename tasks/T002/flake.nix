@@ -8,9 +8,9 @@
   description = "amonite task capsule";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    
     amonite.url = "path:/home/egor/Code/amonite";
-    amonite.inputs.nixpkgs.follows = "nixpkgs";
+    nixpkgs.follows = "amonite/nixpkgs";
   };
 
   outputs = { self, nixpkgs, amonite }:

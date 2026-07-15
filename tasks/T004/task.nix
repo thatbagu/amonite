@@ -1,31 +1,45 @@
-# Task definition — the single source of truth for this task.
-# Referenced by BOTH this capsule's flake (for encapsulated dev/verify)
-# and the project flake (for aggregate verification and clustering).
 { pkgs, amonite }:
 
 amonite.mkTask {
-  id = "T004"; # amonite task id, matches tasks.md
+  id = "T004";
   title = "Shell completions bash zsh fish";
 
-  # Source this task builds from. Usually the project root filtered to
-  # what the task may see — keep the aperture as narrow as possible.
-  # src = ../..;
+  src = ../..;
 
-  # Encapsulation boundary: everything this task's build and dev shell
-  # may use. Nothing else is available.
-  env = with pkgs; [
-    coreutils
-  ];
+  env = with pkgs; [ bash zsh fish coreutils ];
 
-  # Build: produce the task's artifacts under $out.
   build = ''
-    echo "REPLACE with build steps" && exit 1
+    mkdir -p "$out/share/completions"
+    cp "$src/share/completions/amonite.bash" "$out/share/completions/amonite.bash"
+    cp "$src/share/completions/_amonite"     "$out/share/completions/_amonite"
+    cp "$src/share/completions/amonite.fish" "$out/share/completions/amonite.fish"
   '';
 
-  # Acceptance criteria from tasks.md, made mechanical. Every entry must
-  # exit 0 or the task does not exist as a derivation.
   verify = {
-    # unit-tests = ''pytest tests/'';
-    # artifact = ''test -s "$out/thing"'';
+    bash-syntax = ''bash -n "$out/share/completions/amonite.bash"'';
+
+    zsh-syntax = ''
+      zsh --no-exec "$out/share/completions/_amonite"
+    '';
+
+    fish-syntax = ''
+      fish --command "source $out/share/completions/amonite.fish"
+    '';
+
+    bash-subcommands = ''
+      script=$(mktemp)
+      cat > "$script" <<'BASH'
+      COMP_WORDS=(amonite "")
+      COMP_CWORD=1
+      # shellcheck source=/dev/null
+      source "$1"
+      __amonite_complete
+      printf '%s\n' "''${COMPREPLY[@]}"
+      BASH
+      result=$(bash "$script" "$out/share/completions/amonite.bash")
+      echo "$result" | grep -q 'init'
+      echo "$result" | grep -q 'verify'
+      echo "$result" | grep -q 'status'
+    '';
   };
 }

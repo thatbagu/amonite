@@ -14,13 +14,15 @@ usage() {
 amonite — spec-driven development compiled to Nix derivations
 
 Usage:
-  amonite init [dir]            scaffold a project (meta flake + flow files)
-  amonite task new <ID> <title> spawn an encapsulated task capsule
-  amonite verify <ID>|APP|all   build+verify a task/cluster, APP, or everything
-  amonite tui                   interactive derivation-hierarchy viewer
-  amonite generations           list APP generations (NixOS-style)
-  amonite rollback [N]          switch current APP to generation N (default: previous)
-  amonite status                flow artifacts, checklist state, current generation
+  amonite init [--flow-only] [dir]  scaffold a project; --flow-only skips the
+                                    Nix layer (use on existing flake projects)
+  amonite task new <ID> <title>     spawn an encapsulated task capsule
+  amonite verify <ID>|APP|all       build+verify a task/cluster, APP, or everything
+  amonite waves                     show task execution waves for parallel agents
+  amonite tui                       interactive derivation-hierarchy viewer
+  amonite generations               list APP generations (NixOS-style)
+  amonite rollback [N]              switch current APP to generation N (default: previous)
+  amonite status                    flow artifacts, checklist state, current generation
 EOF
 }
 
@@ -52,41 +54,65 @@ ensure_lock() {
 }
 
 cmd_init() {
+  local flow_only=0
+  while [[ "${1:-}" == --* ]]; do
+    case "$1" in
+      --flow-only) flow_only=1 ;;
+      *) echo "amonite: unknown flag '$1'" >&2; usage; exit 1 ;;
+    esac
+    shift
+  done
+
   local dir="${1:-.}"
   mkdir -p "$dir"
   cd "$dir" || exit 1
-  if [ -f flake.nix ]; then
-    echo "amonite: flake.nix already exists here, refusing to overwrite" >&2
-    exit 1
-  fi
 
   local ref="${AMONITE_FLAKE_REF:-path:$share}"
-  mkdir -p .amonite .claude/commands tasks
 
-  sed "s#github:thatbagu/amonite#$ref#" \
-    "$share/nix/templates/project/flake.nix" > flake.nix
-  cp "$share/nix/templates/project/clusters.nix" clusters.nix
+  if [ "$flow_only" -eq 0 ]; then
+    if [ -f flake.nix ]; then
+      echo "amonite: flake.nix already exists — use 'amonite init --flow-only' to scaffold just the flow layer" >&2
+      exit 1
+    fi
+    mkdir -p .amonite .claude/commands tasks
+    sed "s#github:thatbagu/amonite#$ref#" \
+      "$share/nix/templates/project/flake.nix" > flake.nix
+    cp "$share/nix/templates/project/clusters.nix" clusters.nix
+    printf 'result\nresult-*\n.direnv/\n.amonite/generations/\n' > .gitignore
+    [ -d .git ] || git init -q
+  else
+    mkdir -p .amonite .claude/commands tasks
+  fi
+
   for t in principles spec plan tasks; do
-    cp "$share/templates/$t.md" ".amonite/$t.md"
+    local f=".amonite/$t.md"
+    if [ -f "$f" ]; then echo "amonite: $f exists, skipping"; else cp "$share/templates/$t.md" "$f"; fi
   done
   cp "$share"/commands/*.md .claude/commands/
   echo "$ref" > .amonite/flake-ref
-  # Generations are machine-local GC roots; locks and everything else
-  # stay in git.
-  printf 'result\nresult-*\n.direnv/\n.amonite/generations/\n' > .gitignore
 
-  [ -d .git ] || git init -q
-  auto_commit "amonite: init project" \
-    flake.nix clusters.nix .gitignore .amonite .claude
-  ensure_lock .
-
-  echo "amonite: project initialised (flake ref: $ref)"
+  if [ "$flow_only" -eq 0 ]; then
+    # Generations are machine-local GC roots; locks stay in git.
+    auto_commit "amonite: init project" \
+      flake.nix clusters.nix .gitignore .amonite .claude
+    ensure_lock .
+    echo "amonite: project initialised (flake ref: $ref)"
+  else
+    auto_commit "amonite: init flow layer" .amonite .claude
+    echo "amonite: flow layer initialised (flake ref: $ref)"
+  fi
   echo "flow: /amonite.principles → /amonite.specify → /amonite.plan → /amonite.tasks → /amonite.implement"
 }
 
 cmd_task_new() {
-  local id="${1:?usage: amonite task new <ID> <title>}"
-  local title="${2:?usage: amonite task new <ID> <title>}"
+  local id="${1:-}"
+  local title="${2:-}"
+  if [ -z "$id" ] || [ -z "$title" ]; then
+    echo "usage: amonite task new <ID> <title>" >&2; exit 1
+  fi
+  if ! echo "$id" | grep -qE '^T[0-9]+$'; then
+    echo "amonite: ID must match T[0-9]+, e.g. T001 (got: $id)" >&2; exit 1
+  fi
   local dir="tasks/$id"
   if [ -e "$dir" ]; then
     echo "amonite: $dir already exists" >&2
@@ -105,7 +131,10 @@ cmd_task_new() {
 }
 
 cmd_verify() {
-  local target="${1:?usage: amonite verify <ID>|APP|all}"
+  local target="${1:-}"
+  if [ -z "$target" ]; then
+    echo "usage: amonite verify <ID>|APP|all" >&2; exit 1
+  fi
   case "$target" in
     all)
       exec nix flake check -L .
@@ -175,16 +204,76 @@ cmd_rollback() {
   echo "amonite: rolled back $current → $target ($(tr '\n' ' ' < "$gens/$target.meta"))"
 }
 
+cmd_waves() {
+  local graph=".amonite/task-graph.json"
+  if [ ! -f "$graph" ]; then
+    echo "amonite: no task graph yet — run /amonite.plan to generate $graph" >&2
+    exit 1
+  fi
+
+  local red="" grn="" yel="" rst="" bold="" dim=""
+  if [ -t 1 ]; then
+    red='\033[0;31m'; grn='\033[0;32m'; yel='\033[0;33m'
+    bold='\033[1m'; dim='\033[2m'; rst='\033[0m'
+  fi
+
+  # Read wave count
+  local nwaves
+  nwaves="$(jq '.waves | length' "$graph")"
+
+  local w=0
+  while [ "$w" -lt "$nwaves" ]; do
+    local wave_num ntasks deps_label
+    wave_num="$(jq -r ".waves[$w].wave" "$graph")"
+    ntasks="$(jq ".waves[$w].tasks | length" "$graph")"
+
+    # Build the "after X Y" label from common depends across tasks in this wave
+    deps_label="$(jq -r "
+      [.waves[$w].tasks[].depends // [] | .[]] | unique |
+      if length == 0 then \"parallel\"
+      else \"after \" + (. | join(\" \")) end
+    " "$graph")"
+
+    printf "${bold}Wave %s${rst} ${dim}(%s — %s tasks)${rst}\n" \
+      "$wave_num" "$deps_label" "$ntasks"
+
+    local t=0
+    while [ "$t" -lt "$ntasks" ]; do
+      local tid ttitle tcluster tstore tcheck
+      tid="$(jq -r ".waves[$w].tasks[$t].id" "$graph")"
+      ttitle="$(jq -r ".waves[$w].tasks[$t].title" "$graph")"
+      tcluster="$(jq -r ".waves[$w].tasks[$t].cluster // \"?\"" "$graph")"
+
+      # Check verification status via Nix store path
+      tstore="$(nix eval --raw ".#packages.$(uname -m)-$(uname -s | tr '[:upper:]' '[:lower:]').task-${tid}" 2>/dev/null || true)"
+      if [ -n "$tstore" ] && [ -e "$tstore" ]; then
+        tcheck="${grn}●${rst}"
+      else
+        tcheck="${yel}○${rst}"
+      fi
+
+      printf "  ${tcheck} ${bold}%s${rst} ${dim}[%s]${rst} %s\n" "$tid" "$tcluster" "$ttitle"
+      t=$((t + 1))
+    done
+    echo ""
+    w=$((w + 1))
+  done
+}
+
 cmd_status() {
+  local red="" grn="" yel="" rst=""
+  if [ -t 1 ]; then
+    red='\033[0;31m'; grn='\033[0;32m'; yel='\033[0;33m'; rst='\033[0m'
+  fi
   echo "== flow artifacts =="
   for t in principles spec plan tasks; do
     local f=".amonite/$t.md"
     if [ ! -f "$f" ]; then
-      echo "  $t: missing"
+      printf '  %s: %smissing%s\n' "$t" "$red" "$rst"
     elif grep -q 'REPLACE\|NEEDS CLARIFICATION\|PROJECT / FEATURE NAME' "$f"; then
-      echo "  $t: draft (placeholders remain)"
+      printf '  %s: %sdraft (placeholders remain)%s\n' "$t" "$yel" "$rst"
     else
-      echo "  $t: ready"
+      printf '  %s: %sready%s\n' "$t" "$grn" "$rst"
     fi
   done
   echo "== tasks =="
@@ -210,6 +299,7 @@ case "${1:-}" in
       *) usage; exit 1 ;;
     esac
     ;;
+  waves) shift; cmd_waves ;;
   tui) shift; exec amonite-tui "$@" ;;
   verify) shift; cmd_verify "$@" ;;
   generations) shift; cmd_generations ;;

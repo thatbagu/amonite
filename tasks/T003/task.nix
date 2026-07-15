@@ -1,31 +1,34 @@
-# Task definition — the single source of truth for this task.
-# Referenced by BOTH this capsule's flake (for encapsulated dev/verify)
-# and the project flake (for aggregate verification and clustering).
 { pkgs, amonite }:
 
 amonite.mkTask {
-  id = "T003"; # amonite task id, matches tasks.md
+  id = "T003";
   title = "nixpkgs-convention package.nix";
 
-  # Source this task builds from. Usually the project root filtered to
-  # what the task may see — keep the aperture as narrow as possible.
-  # src = ../..;
+  src = ../..;
 
-  # Encapsulation boundary: everything this task's build and dev shell
-  # may use. Nothing else is available.
-  env = with pkgs; [
-    coreutils
-  ];
+  env = with pkgs; [ bash coreutils nix ];
 
-  # Build: produce the task's artifacts under $out.
   build = ''
-    echo "REPLACE with build steps" && exit 1
+    mkdir -p "$out"
+    cp "$src/package.nix" "$out/package.nix"
   '';
 
-  # Acceptance criteria from tasks.md, made mechanical. Every entry must
-  # exit 0 or the task does not exist as a derivation.
   verify = {
-    # unit-tests = ''pytest tests/'';
-    # artifact = ''test -s "$out/thing"'';
+    file-exists = ''test -f "$out/package.nix"'';
+
+    nix-syntax = ''
+      nix-instantiate --parse "$out/package.nix" > /dev/null
+    '';
+
+    meta-description = ''grep -q 'description' "$out/package.nix"'';
+    meta-license     = ''grep -q 'licenses\.mit' "$out/package.nix"'';
+    meta-mainProgram = ''grep -q 'mainProgram.*amonite' "$out/package.nix"'';
+
+    help-output = ''
+      msg=$(AMONITE_SHARE="$src" bash "$src/bin/amonite" --help 2>&1 || true)
+      echo "$msg" | grep -q 'init'
+      echo "$msg" | grep -q 'verify'
+      echo "$msg" | grep -q 'status'
+    '';
   };
 }

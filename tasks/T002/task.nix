@@ -1,31 +1,60 @@
-# Task definition — the single source of truth for this task.
-# Referenced by BOTH this capsule's flake (for encapsulated dev/verify)
-# and the project flake (for aggregate verification and clustering).
 { pkgs, amonite }:
 
 amonite.mkTask {
-  id = "T002"; # amonite task id, matches tasks.md
+  id = "T002";
   title = "CLI UX guards and tty-aware status colour";
 
-  # Source this task builds from. Usually the project root filtered to
-  # what the task may see — keep the aperture as narrow as possible.
-  # src = ../..;
+  src = ../..;
 
-  # Encapsulation boundary: everything this task's build and dev shell
-  # may use. Nothing else is available.
-  env = with pkgs; [
-    coreutils
-  ];
+  env = with pkgs; [ bash git shellcheck coreutils ];
 
-  # Build: produce the task's artifacts under $out.
   build = ''
-    echo "REPLACE with build steps" && exit 1
+    mkdir -p "$out/bin" "$out/templates" "$out/commands"
+    cp "$src/bin/amonite" "$out/bin/amonite"
+    cp -r "$src/templates/." "$out/templates/"
+    cp -r "$src/commands/." "$out/commands/"
+    cp -r "$src/nix" "$out/nix"
+    chmod +x "$out/bin/amonite"
   '';
 
-  # Acceptance criteria from tasks.md, made mechanical. Every entry must
-  # exit 0 or the task does not exist as a derivation.
   verify = {
-    # unit-tests = ''pytest tests/'';
-    # artifact = ''test -s "$out/thing"'';
+    shellcheck-clean = ''
+      shellcheck --shell=bash "$out/bin/amonite"
+    '';
+
+    verify-no-arg-exits-1 = ''
+      tmp=$(mktemp -d)
+      cd "$tmp"
+      AMONITE_SHARE="$out" bash "$out/bin/amonite" verify && exit 1 || true
+    '';
+
+    verify-no-arg-stderr = ''
+      tmp=$(mktemp -d)
+      cd "$tmp"
+      msg=$(AMONITE_SHARE="$out" bash "$out/bin/amonite" verify 2>&1 || true)
+      echo "$msg" | grep -qi 'usage'
+    '';
+
+    bad-id-hint = ''
+      tmp=$(mktemp -d)
+      cd "$tmp"
+      export HOME="$tmp"
+      git init -q
+      git config user.email "test@amonite"
+      git config user.name "amonite"
+      msg=$(AMONITE_SHARE="$out" bash "$out/bin/amonite" task new not-valid-id "some title" 2>&1 || true)
+      echo "$msg" | grep -qE 'T\[0-9\]'
+    '';
+
+    status-runs = ''
+      tmp=$(mktemp -d)
+      cd "$tmp"
+      export HOME="$tmp"
+      git init -q
+      git config user.email "test@amonite"
+      git config user.name "amonite"
+      AMONITE_SHARE="$out" bash "$out/bin/amonite" init --flow-only
+      AMONITE_SHARE="$out" bash "$out/bin/amonite" status
+    '';
   };
 }

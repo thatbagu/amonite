@@ -53,13 +53,17 @@ rec {
     , env ? [ ]
     , build
     , verify ? { }
+    # Informational dependency list: other task IDs that must be done before
+    # this one. Not enforced by Nix (clusters handle build ordering); used by
+    # `amonite waves` and the TUI to compute parallel execution waves.
+    , depends ? [ ]
     }:
     pkgs.stdenvNoCC.mkDerivation {
       name = "amonite-task-${id}";
       inherit src;
       dontUnpack = src == null;
       nativeBuildInputs = env;
-      passthru = { amonite = { inherit id title; kind = "task"; }; };
+      passthru = { amonite = { inherit id title depends; kind = "task"; }; };
       buildPhase = ''
         runHook preBuild
         mkdir -p "$out"
@@ -156,6 +160,8 @@ rec {
         # node to a bare string (derivation-like attrset semantics).
         store = "${d}";
         members = map (m: m.amonite.id or m.name) (d.amonite.tasks or [ ]);
+        # Informational task dependencies for wave computation (tasks only).
+        depends = d.amonite.depends or [ ];
       };
     in
     {
