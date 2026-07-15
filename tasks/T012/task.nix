@@ -8,7 +8,12 @@ amonite.mkTask {
 
   env = with pkgs; [ nix git coreutils ];
 
-  build = ''echo "T012 not yet implemented" >&2 && exit 1'';
+  build = ''
+    cp -r . "$out"
+    chmod -R u+w "$out"
+    # Remove dangling symlinks that stdenv's noBrokenSymlinks fixup would reject
+    find "$out" -xtype l -delete
+  '';
 
   verify = {
     # lib.nix exports mkResearchTask

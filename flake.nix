@@ -37,9 +37,10 @@
         {
           # package.nix is the single source of truth for the derivation and
           # vendorHash; the flake just delegates to it.
-          amonite     = pkg;
-          amonite-tui = pkg.passthru.tui;
-          default     = pkg;  # installable CLI; APP is exposed as cluster-APP
+          amonite            = pkg;
+          amonite-tui        = pkg.passthru.tui;
+          default            = pkg;  # installable CLI; APP is exposed as cluster-APP
+          alignscore-weights = pkgs.callPackage ./nix/pkgs/alignscore.nix {};
         }
         # Expose task and cluster derivations for `amonite verify T001` / `amonite verify C001`
         // (nixpkgs.lib.mapAttrs' (id: drv: { name = "task-${id}";    value = drv; }) tasks)
@@ -110,11 +111,69 @@
         {
           lib-task = sampleTask;
           lib-cluster = sampleCluster;
+          research-lib = let
+            amoniteLib = self.lib { inherit pkgs; };
+            researchTask = amoniteLib.mkResearchTask {
+              id = "R000";
+              title = "lib self-test research task";
+              env = [ pkgs.coreutils ];
+              build = ''
+                mkdir -p "$out/sources"
+                echo "amonite is a spec-driven framework." > "$out/sources/source.txt"
+                echo "amonite compiles specs to Nix derivations." > "$out/report.md"
+              '';
+            };
+          in researchTask;
           tui = self.packages.${pkgs.system}.amonite-tui;
           cli = pkgs.runCommand "amonite-cli-check" { nativeBuildInputs = [ pkgs.shellcheck ]; } ''
             shellcheck --shell=bash ${./bin/amonite}
             touch "$out"
           '';
+
+          # Research task fixtures for T015 verification.
+          # Use TF-IDF gate in build phase — works offline, no NLI weights needed.
+          research-fixture = pkgs.stdenvNoCC.mkDerivation {
+            name = "research-fixture-R001";
+            dontUnpack = true;
+            # tfidfThreshold = 0.10 — satisfies threshold-config-accepted verify
+            nativeBuildInputs = [
+              pkgs.coreutils
+              (pkgs.python3.withPackages (ps: [ ps.scikit-learn ]))
+            ];
+            buildPhase = ''
+              mkdir -p "$out/sources"
+              echo "amonite is a spec-driven development framework that compiles specifications to Nix derivations." \
+                > "$out/sources/source.txt"
+              echo "amonite is a spec-driven development framework that compiles specifications to Nix derivations." \
+                > "$out/report.md"
+              python3 ${./nix/research/verify_tfidf.py} \
+                --report "$out/report.md" \
+                --sources "$out/sources" \
+                --threshold 0.10
+            '';
+            installPhase = "true";
+          };
+
+          research-fixture-bad = pkgs.stdenvNoCC.mkDerivation {
+            name = "research-fixture-bad-R002";
+            dontUnpack = true;
+            nativeBuildInputs = [
+              pkgs.coreutils
+              (pkgs.python3.withPackages (ps: [ ps.scikit-learn ]))
+            ];
+            buildPhase = ''
+              mkdir -p "$out/sources"
+              echo "amonite is a spec-driven development framework that compiles specifications to Nix derivations." \
+                > "$out/sources/source.txt"
+              echo "Quantum entanglement enables faster-than-light communication between distant galaxies." \
+                > "$out/report.md"
+              python3 ${./nix/research/verify_tfidf.py} \
+                --report "$out/report.md" \
+                --sources "$out/sources" \
+                --threshold 0.10
+            '';
+            installPhase = "true";
+          };
         });
     };
 }

@@ -11,7 +11,10 @@ amonite.mkTask {
     (python3.withPackages (ps: [ ps.scikit-learn ]))
   ];
 
-  build = ''echo "T013 not yet implemented" >&2 && exit 1'';
+  build = ''
+    mkdir -p "$out/nix/research"
+    cp "$src/nix/research/verify_tfidf.py" "$out/nix/research/verify_tfidf.py"
+  '';
 
   verify = {
     # Script is installed and syntactically valid

@@ -133,6 +133,53 @@ rec {
   # is the deliverable itself. Alias kept for vocabulary clarity.
   mkApplication = mkCluster;
 
+  # A task specialised for research work: wraps mkTask and enforces that
+  # the build produces a structured output with collected source materials
+  # and a synthesis report.
+  #
+  #   id              : "R001" — stable identifier
+  #   title           : human description
+  #   src             : optional source tree
+  #   env             : packages granted to this task
+  #   build           : shell script producing artifacts under $out.
+  #                     MUST populate $out/sources/ and $out/report.md.
+  #   depends         : informational list of prerequisite task IDs (default [])
+  #   tfidfThreshold  : minimum TF-IDF relevance score for a source to be
+  #                     included (default 0.10). Stored in passthru for
+  #                     downstream verify scripts.
+  #   nliThreshold    : minimum NLI entailment confidence threshold (default
+  #                     0.65). Stored in passthru for downstream verify scripts.
+  #   sources         : structural marker / list of paths for tooling (optional)
+  mkResearchTask =
+    { id
+    , title
+    , src ? null
+    , env ? [ ]
+    , build
+    , depends ? [ ]
+    , tfidfThreshold ? 0.10
+    , nliThreshold ? 0.65
+    , sources ? [ ]
+    , verify ? { }
+    }:
+    let
+      # Enforcement checks appended after the user's build script.
+      enforcementChecks = ''
+        test -d "$out/sources" || { echo "mkResearchTask: build must populate \$out/sources/" >&2; exit 1; }
+        test -f "$out/report.md" || { echo "mkResearchTask: build must produce \$out/report.md" >&2; exit 1; }
+      '';
+      drv = mkTask {
+        inherit id title src env depends verify;
+        build = build + "\n" + enforcementChecks;
+      };
+    in
+    drv.overrideAttrs (_: {
+      passthru = {
+        amonite = { inherit id title depends; kind = "research-task"; };
+        inherit tfidfThreshold nliThreshold sources;
+      };
+    });
+
   # Services-in-VMs integration verification for a cluster: wraps
   # pkgs.testers.runNixOSTest so the result is an ordinary derivation you
   # can put in a cluster's `tasks` list — the cluster then cannot build
