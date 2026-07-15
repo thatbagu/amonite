@@ -42,27 +42,38 @@ disagree.
 
 ### 4. Derivation semantics (nix/lib.nix)
 
-Five public functions — no more without a spec amendment (N2):
+Five public names — no more without a spec amendment (N2). Four distinct
+implementations plus one alias:
 
 - `mkTask`: build runs, then every `verify` snippet must exit 0, inside the
-  same derivation. Existence in the store ⇒ verified. The verification
-  trail is written to `$out/.amonite/verified` so it ships with the artifact.
-- `mkCluster`: member tasks are `buildInputs` — Nix's dependency resolution
-  *is* the orchestrator; a cluster cannot realise before its members verify.
-  `integrate` assembles member outputs; cluster-level `verify` runs
-  integration criteria.
-- `mkApplication` = `mkCluster`, vocabulary for the root: the final
-  derivation aka the working application.
+  same derivation. Existence in the store ⇒ verified — **conditional on
+  criteria quality**: weak criteria (empty verify, pure grep on source files)
+  produce a weak guarantee. Use behavioral criteria (run the binary, execute
+  a script, parse output). The verification trail is written to
+  `$out/.amonite/verified` so it ships with the artifact.
+  The `depends` field is an agent coordination hint for wave planning; it
+  does NOT affect Nix build ordering — clusters (buildInputs) do that.
+- `mkCluster`: member tasks *and clusters* are `buildInputs` — Nix's
+  dependency resolution is the orchestrator; a cluster cannot realise before
+  its members verify. Members nest at any depth uniformly. Optional `build`
+  script assembles a combined artifact from member symlinks; cluster-level
+  `verify` runs integration criteria.
+- `mkApplication`: vocabulary alias for `mkCluster`. Signals "this is the
+  deliverable" rather than an intermediate aggregation. Implementation is
+  identical; the name is the contract.
 - `mkResearchTask`: wraps `mkTask` and enforces that the build produces
   `$out/sources/` (collected evidence) and `$out/report.md` (synthesis).
-  After the build, two offline verification tiers run automatically: TF-IDF
-  cosine similarity (fast lexical gate) and AlignScore NLI entailment
-  (claim-level faithfulness against sources). No network at verify time;
-  model weights are a fixed-output Nix derivation.
-- `mkVmVerify`: wraps `pkgs.testers.runNixOSTest` so a full NixOS VM
-  integration test is just another derivation in a cluster's member list.
-  Linux builders required (x86_64-linux or aarch64-linux); on darwin,
-  configure a linux-builder or remote builder.
+  Two offline verification tiers run automatically: TF-IDF cosine similarity
+  (fast lexical gate — catches fully detached reports) and AlignScore NLI
+  entailment (gross fabrication detector). The NLI gate at default threshold
+  0.35 reliably catches invented claims (score <0.25) but does **not**
+  guarantee sentence-level faithfulness for nuanced synthesis — synthesis
+  reports naturally score 0.35–0.50 with this model. No network at verify
+  time; model weights are a fixed-output Nix derivation.
+- `mkVmVerify`: Linux-only helper wrapping `pkgs.testers.runNixOSTest` so a
+  NixOS VM integration test is just another derivation in a cluster's member
+  list. Not available on darwin without a linux-builder. Gated in `checks`
+  via `lib.optionalAttrs pkgs.stdenv.isLinux`.
 
 ## Verification ladder
 
@@ -91,8 +102,9 @@ not the toolchain.
 - No orchestrator daemon, no state DB: the Nix store is the state.
 - No LLM-judged compliance: if a criterion can't be mechanical it goes to
   `gate.live` where a human owns it.
-- No framework growth: the surface is one lib (5 functions), 4 templates,
-  5 commands, 1 CLI. If it needs plugins, it has failed.
+- No framework growth: the surface is one lib (4 distinct functions + 1 alias
+  + 1 Linux-only helper), 4 templates, 5 commands, 1 CLI. If it needs plugins,
+  it has failed.
 
 ## Generations
 

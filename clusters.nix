@@ -115,58 +115,6 @@ let
     };
   };
 
-  # US11 implementation cluster — tasks that deliver recursive mkGraph + fixture
-  hierarchyImpl = amonite.mkCluster {
-    id = "C007";
-    title = "hierarchy-composition";
-    tasks = with tasks; [ T016 T017 ];
-    env = [ pkgs.nix pkgs.coreutils ];
-    verify = {
-      # Recursive mkGraph: lib.nix must export the updated function
-      mkgraph-is-recursive = ''
-        grep -q "collectAll" "$out/tasks/T016/nix/lib.nix"
-      '';
-      # Fixture clusters exist in clusters.nix
-      fixture-c008-declared = ''
-        grep -q '"C008"' "$out/tasks/T017/clusters.nix"
-      '';
-      fixture-c009-declared = ''
-        grep -q '"C009"' "$out/tasks/T017/clusters.nix"
-      '';
-    };
-  };
-
-  # US11 three-level fixture: proves mkCluster composes uniformly at any depth.
-  # C009 (grandparent) → C008 (cluster) → tasks (T001, T003) is the three-level
-  # hierarchy; C008 is an ordinary cluster that itself contains tasks.
-  hierarchyLeaf = amonite.mkCluster {
-    id = "C008";
-    title = "hierarchy-leaf";
-    tasks = with tasks; [ T001 T003 ];
-    verify = {
-      leaf-t001-present = ''test -e "$out/tasks/T001"'';
-      leaf-t003-present = ''test -e "$out/tasks/T003"'';
-    };
-  };
-
-  hierarchyRoot = amonite.mkCluster {
-    id = "C009";
-    title = "hierarchy-root";
-    # C008 (a cluster) and T002 (a task) as siblings — proves uniform treatment
-    tasks = with tasks; [ hierarchyLeaf T002 ];
-    env = [ pkgs.coreutils ];
-    verify = {
-      sub-cluster-present = ''test -e "$out/tasks/C008"'';
-      leaf-task-present   = ''test -e "$out/tasks/T002"'';
-      # Three-level artifact chain: grandparent → cluster → task artifact.
-      # T001 produces bin/amonite; follow C009→C008→T001 through symlinks.
-      three-level-chain = ''
-        test -e "$out/tasks/C008/tasks/T001/bin/amonite" \
-          || { echo "bin/amonite not reachable through C009→C008→T001 chain"; exit 1; }
-      '';
-    };
-  };
-
 in
 {
   C001 = cliHardening;
@@ -175,9 +123,6 @@ in
   C004 = releasePipeline;
   C005 = tuiWaves;
   C006 = researchVerify;
-  C007 = hierarchyImpl;
-  C008 = hierarchyLeaf;
-  C009 = hierarchyRoot;
 
   APP = amonite.mkApplication {
     id = "APP";

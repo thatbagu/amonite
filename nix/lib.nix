@@ -45,7 +45,11 @@ rec {
   #            the task sees these and nothing else)
   #   build  : shell script producing artifacts under $out
   #   verify : attrset of named acceptance criteria; every one must pass
-  #            for the derivation to exist
+  #            for the derivation to exist. The guarantee "a derivation in
+  #            the store has passed its checks" is only as strong as the
+  #            criteria themselves — weak criteria (empty verify blocks,
+  #            pure grep) produce a weak guarantee. Use behavioral criteria
+  #            (run the binary, parse output, execute a script).
   mkTask =
     { id
     , title
@@ -53,9 +57,10 @@ rec {
     , env ? [ ]
     , build
     , verify ? { }
-    # Informational dependency list: other task IDs that must be done before
-    # this one. Not enforced by Nix (clusters handle build ordering); used by
-    # `amonite waves` and the TUI to compute parallel execution waves.
+    # Agent coordination hint: other task IDs that should complete before
+    # this one is started by an implementing agent. NOT a Nix build
+    # constraint — clusters (buildInputs) enforce actual build ordering.
+    # Used by `amonite waves` and the TUI for parallel dispatch planning.
     , depends ? [ ]
     }:
     pkgs.stdenvNoCC.mkDerivation {
@@ -84,16 +89,18 @@ rec {
 
   # Aggregate verified tasks (or clusters) into a higher abstraction.
   #
-  #   tasks     : list of mkTask/mkCluster derivations
-  #   integrate : optional shell script combining member outputs into
-  #               something new under $out (defaults to linking members)
-  #   verify    : integration-level acceptance criteria over $out
+  #   tasks  : list of mkTask/mkCluster derivations (uniform — both are
+  #            just derivations; clusters nest at any depth)
+  #   build  : optional shell script that runs after member symlinks are
+  #            created; use to assemble a combined artifact under $out from
+  #            member outputs reachable at $out/tasks/<id>/
+  #   verify : integration-level acceptance criteria over $out
   mkCluster =
     { id
     , title
     , tasks
     , env ? [ ]
-    , integrate ? ""
+    , build ? ""
     , verify ? { }
     }:
     let
@@ -113,7 +120,7 @@ rec {
         runHook preBuild
         mkdir -p "$out/tasks"
         ${memberLinks}
-        ${integrate}
+        ${build}
         runHook postBuild
       '';
       installPhase = ''
@@ -129,8 +136,9 @@ rec {
       '';
     };
 
-  # The final derivation aka working application: a cluster whose output
-  # is the deliverable itself. Alias kept for vocabulary clarity.
+  # Vocabulary alias for mkCluster. Signals "this is the deliverable"
+  # rather than an intermediate aggregation. Implementation is identical;
+  # the name is the API contract: APP = mkApplication, everything else = mkCluster.
   mkApplication = mkCluster;
 
   # A task specialised for research work: wraps mkTask and enforces that
@@ -144,11 +152,15 @@ rec {
   #   build           : shell script producing artifacts under $out.
   #                     MUST populate $out/sources/ and $out/report.md.
   #   depends         : informational list of prerequisite task IDs (default [])
-  #   tfidfThreshold  : minimum TF-IDF relevance score for a source to be
-  #                     included (default 0.10). Stored in passthru for
-  #                     downstream verify scripts.
-  #   nliThreshold    : minimum NLI entailment confidence threshold (default
-  #                     0.65). Stored in passthru for downstream verify scripts.
+  #   tfidfThreshold  : TF-IDF cosine similarity floor (default 0.10). Fast
+  #                     lexical gate; catches completely detached reports.
+  #   nliThreshold    : AlignScore NLI-SP entailment floor (default 0.35).
+  #                     Calibrated for synthesis tasks — analytical conclusions
+  #                     drawn from sources score 0.35–0.50 with this model.
+  #                     At 0.35 the gate reliably catches gross fabrications
+  #                     (invented claims score <0.25) but does NOT guarantee
+  #                     sentence-level faithfulness for nuanced synthesis.
+  #                     Raise toward 0.60 for extraction tasks (verbatim copying).
   #   sources         : structural marker / list of paths for tooling (optional)
   mkResearchTask =
     { id
@@ -158,7 +170,7 @@ rec {
     , build
     , depends ? [ ]
     , tfidfThreshold ? 0.10
-    , nliThreshold ? 0.65
+    , nliThreshold ? 0.35
     , sources ? [ ]
     , verify ? { }
     }:

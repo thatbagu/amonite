@@ -87,6 +87,7 @@
       # through the library so a broken lib.nix fails `nix flake check`.
       checks = forAllSystems (pkgs:
         let
+          inherit (pkgs) lib;
           amonite = self.lib { inherit pkgs; };
           sampleTask = amonite.mkTask {
             id = "T000";
@@ -108,10 +109,34 @@
               member-present = ''test -e "$out/tasks/T000/artifact.txt"'';
             };
           };
+          # Three-level nesting fixture: grandparent → cluster → task.
+          # Proves mkCluster composes uniformly at arbitrary depth.
+          leafTask = amonite.mkTask {
+            id = "T000L";
+            title = "hierarchy leaf task";
+            env = [ pkgs.coreutils ];
+            build = ''echo leaf > "$out/leaf.txt"'';
+            verify.leaf-exists = ''test -f "$out/leaf.txt"'';
+          };
+          innerCluster = amonite.mkCluster {
+            id = "C000I";
+            title = "hierarchy inner cluster";
+            tasks = [ leafTask ];
+            verify.leaf-reachable = ''test -e "$out/tasks/T000L/leaf.txt"'';
+          };
+          outerCluster = amonite.mkCluster {
+            id = "C000O";
+            title = "hierarchy outer cluster";
+            tasks = [ innerCluster ];
+            verify.three-level-chain =
+              ''test -e "$out/tasks/C000I/tasks/T000L/leaf.txt"'';
+          };
         in
         {
-          lib-task = sampleTask;
+          lib-task    = sampleTask;
           lib-cluster = sampleCluster;
+          # Three-level hierarchy: outer(inner(leaf)) — all three levels verify.
+          lib-nested-cluster = outerCluster;
           research-lib = let
             amoniteLib = self.lib { inherit pkgs; };
             researchTask = amoniteLib.mkResearchTask {
@@ -174,6 +199,17 @@
                 --threshold 0.10
             '';
             installPhase = "true";
+          };
+        } // lib.optionalAttrs pkgs.stdenv.isLinux {
+          # mkVmVerify is Linux-only (needs a KVM/QEMU builder).
+          # On darwin configure a linux-builder before using mkVmVerify in clusters.
+          lib-vm-verify = amonite.mkVmVerify {
+            id = "VM000";
+            nodes.machine = { ... }: { };
+            testScript = ''
+              machine.wait_for_unit("multi-user.target")
+              machine.succeed("true")
+            '';
           };
         });
     };

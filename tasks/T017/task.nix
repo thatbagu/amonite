@@ -2,7 +2,7 @@
 
 amonite.mkTask {
   id = "T017";
-  title = "Three-level cluster fixture";
+  title = "Architecture cleanup verification";
 
   src = ../..;
 
@@ -16,91 +16,58 @@ amonite.mkTask {
   '';
 
   verify = {
-    # Structural: fixture clusters are declared in clusters.nix
-    clusters-nix-has-c008 = ''
+    # integrate was renamed to build in mkCluster — no dead param in public API
+    integrate-param-gone = ''
+      grep -n "integrate" "$out/nix/lib.nix" | grep -v "^Binary\|#" \
+        | grep -q "integrate" \
+        && { echo "integrate still appears as a param name in lib.nix"; exit 1; } \
+        || echo "PASS: integrate param removed"
+    '';
+
+    # Fixture clusters must NOT be in clusters.nix (they live in flake.nix checks)
+    no-fixture-clusters-in-packages = ''
       grep -q 'id = "C008"' "$out/clusters.nix" \
-        || { echo "C008 not declared in clusters.nix"; exit 1; }
-    '';
-    clusters-nix-has-c009 = ''
+        && { echo "C008 fixture leaked into clusters.nix (should be in checks only)"; exit 1; } \
+        || true
       grep -q 'id = "C009"' "$out/clusters.nix" \
-        || { echo "C009 not declared in clusters.nix"; exit 1; }
+        && { echo "C009 fixture leaked into clusters.nix (should be in checks only)"; exit 1; } \
+        || true
+      echo "PASS: no fixture clusters in clusters.nix"
     '';
 
-    # BEHAVIORAL: import clusters.nix directly against baked nixpkgs and
-    # confirm C008 / C009 evaluate to derivation sets (no flake network).
-    c008-evaluates = ''
+    # Three-level hierarchy fixture must be in flake.nix checks
+    hierarchy-fixture-in-checks = ''
+      grep -q "lib-nested-cluster" "$out/flake.nix" \
+        || { echo "lib-nested-cluster check not found in flake.nix"; exit 1; }
+    '';
+
+    # VM verify check must be Linux-gated (isLinux guard) — not on darwin
+    vm-verify-linux-gated = ''
+      grep -q "lib-vm-verify" "$out/flake.nix" \
+        || { echo "lib-vm-verify check not found in flake.nix"; exit 1; }
+      grep -q "isLinux" "$out/flake.nix" \
+        || { echo "isLinux guard not found in flake.nix"; exit 1; }
+    '';
+
+    # BEHAVIORAL: mkGraph still recurses correctly after all refactoring
+    recursive-graph-still-works = ''
       export HOME; HOME=$(mktemp -d)
       export NIX_CONF_DIR="$HOME/nix-conf"
       mkdir -p "$NIX_CONF_DIR"
       printf 'experimental-features = nix-command\n' > "$NIX_CONF_DIR/nix.conf"
       _nixpkgs=$(cat "$out/.nixpkgs-path")
-      result=$(nix eval --impure --raw --expr "
+      found=$(nix eval --impure --json --expr "
         let
-          pkgs    = import \"$_nixpkgs\" {};
-          amonite = import \"$out/nix/lib.nix\" { inherit pkgs; };
-          tasks   = amonite.loadTasks { root = \"$out\"; amonite = amonite; };
-          clusters = import \"$out/clusters.nix\" { inherit pkgs tasks amonite; };
-        in builtins.typeOf clusters.C008
-      ")
-      [ "$result" = "set" ] \
-        || { echo "C008 did not evaluate to a derivation set: $result"; exit 1; }
-    '';
-
-    c009-evaluates = ''
-      export HOME; HOME=$(mktemp -d)
-      export NIX_CONF_DIR="$HOME/nix-conf"
-      mkdir -p "$NIX_CONF_DIR"
-      printf 'experimental-features = nix-command\n' > "$NIX_CONF_DIR/nix.conf"
-      _nixpkgs=$(cat "$out/.nixpkgs-path")
-      result=$(nix eval --impure --raw --expr "
-        let
-          pkgs    = import \"$_nixpkgs\" {};
-          amonite = import \"$out/nix/lib.nix\" { inherit pkgs; };
-          tasks   = amonite.loadTasks { root = \"$out\"; amonite = amonite; };
-          clusters = import \"$out/clusters.nix\" { inherit pkgs tasks amonite; };
-        in builtins.typeOf clusters.C009
-      ")
-      [ "$result" = "set" ] \
-        || { echo "C009 did not evaluate to a derivation set: $result"; exit 1; }
-    '';
-
-    # BEHAVIORAL: mkGraph with the fixture clusters emits both C008 and C009
-    graph-has-c008 = ''
-      export HOME; HOME=$(mktemp -d)
-      export NIX_CONF_DIR="$HOME/nix-conf"
-      mkdir -p "$NIX_CONF_DIR"
-      printf 'experimental-features = nix-command\n' > "$NIX_CONF_DIR/nix.conf"
-      _nixpkgs=$(cat "$out/.nixpkgs-path")
-      ids=$(nix eval --impure --json --expr "
-        let
-          pkgs    = import \"$_nixpkgs\" {};
-          amonite = import \"$out/nix/lib.nix\" { inherit pkgs; };
-          tasks   = amonite.loadTasks { root = \"$out\"; amonite = amonite; };
-          clusters = import \"$out/clusters.nix\" { inherit pkgs tasks amonite; };
-          g = amonite.mkGraph { inherit tasks clusters; };
+          pkgs = import \"$_nixpkgs\" {};
+          lib  = import \"$out/nix/lib.nix\" { inherit pkgs; };
+          leaf  = lib.mkTask { id = \"T_l\"; title = \"l\"; build = \"mkdir -p \\\"\$out\\\"\"; };
+          inner = lib.mkCluster { id = \"C_i\"; title = \"i\"; tasks = [ leaf ]; };
+          outer = lib.mkCluster { id = \"C_o\"; title = \"o\"; tasks = [ inner ]; };
+          g = lib.mkGraph { tasks = {}; clusters = { C_o = outer; }; };
         in map (n: n.id) g.nodes
       " 2>/dev/null)
-      echo "$ids" | grep -q '"C008"' \
-        || { echo "C008 not found in graph nodes: $ids"; exit 1; }
-    '';
-
-    graph-has-c009 = ''
-      export HOME; HOME=$(mktemp -d)
-      export NIX_CONF_DIR="$HOME/nix-conf"
-      mkdir -p "$NIX_CONF_DIR"
-      printf 'experimental-features = nix-command\n' > "$NIX_CONF_DIR/nix.conf"
-      _nixpkgs=$(cat "$out/.nixpkgs-path")
-      ids=$(nix eval --impure --json --expr "
-        let
-          pkgs    = import \"$_nixpkgs\" {};
-          amonite = import \"$out/nix/lib.nix\" { inherit pkgs; };
-          tasks   = amonite.loadTasks { root = \"$out\"; amonite = amonite; };
-          clusters = import \"$out/clusters.nix\" { inherit pkgs tasks amonite; };
-          g = amonite.mkGraph { inherit tasks clusters; };
-        in map (n: n.id) g.nodes
-      " 2>/dev/null)
-      echo "$ids" | grep -q '"C009"' \
-        || { echo "C009 not found in graph nodes: $ids"; exit 1; }
+      echo "$found" | grep -q '"C_i"' \
+        || { echo "sub-cluster not found in recursive graph after refactor: $found"; exit 1; }
     '';
   };
 }
