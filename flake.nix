@@ -40,7 +40,8 @@
           amonite            = pkg;
           amonite-tui        = pkg.passthru.tui;
           default            = pkg;  # installable CLI; APP is exposed as cluster-APP
-          alignscore-weights = pkgs.callPackage ./nix/pkgs/alignscore.nix {};
+          alignscore-weights  = pkgs.callPackage ./nix/pkgs/alignscore.nix {};
+          python-alignscore   = pkgs.callPackage ./nix/pkgs/python-alignscore.nix {};
         }
         # Expose task and cluster derivations for `amonite verify T001` / `amonite verify C001`
         // (nixpkgs.lib.mapAttrs' (id: drv: { name = "task-${id}";    value = drv; }) tasks)

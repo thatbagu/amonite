@@ -1,97 +1,95 @@
 #!/usr/bin/env python3
-"""NLI faithfulness verification script.
+"""
+NLI faithfulness verification using AlignScore.
 
-Checks that a research report is semantically entailed by its source documents
-using a cross-encoder NLI model. Exits 0 if mean entailment score meets the
-threshold, 1 if it does not, 2 if the model weights are not available.
+Requires --weights-dir pointing to the nix build .#alignscore-weights output,
+which must contain:
+  checkpoints/AlignScore-base.ckpt
+  roberta-base/   (config.json, tokenizer.json, vocab.json, merges.txt,
+                   tokenizer_config.json, pytorch_model.bin)
+
+Exit codes:
+  0 — pass (mean entailment >= threshold)
+  1 — fail (mean entailment < threshold)
+  2 — weights or deps missing
 """
 import argparse
+import os
 import sys
 from pathlib import Path
 
 
 def main():
-    p = argparse.ArgumentParser(
-        description="Verify report faithfulness via NLI entailment scoring"
-    )
-    p.add_argument("--report", required=True, help="Path to the report file")
-    p.add_argument("--sources", required=True, help="Directory of source documents")
-    p.add_argument(
-        "--threshold",
-        type=float,
-        default=0.65,
-        help="Minimum mean entailment score (default: 0.65)",
-    )
-    p.add_argument(
-        "--weights-dir",
-        required=True,
-        help="Directory containing the NLI model weights",
-    )
-    args = p.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--report",      required=True)
+    parser.add_argument("--sources",     required=True)
+    parser.add_argument("--threshold",   type=float, default=0.65)
+    parser.add_argument("--weights-dir", required=True,
+                        help="$out from nix build .#alignscore-weights")
+    args = parser.parse_args()
 
     weights_dir = Path(args.weights_dir)
-    if not weights_dir.exists() or not any(weights_dir.iterdir()):
-        print(
-            "ERROR: weights-dir is empty — run: nix build .#alignscore-weights",
-            file=sys.stderr,
-        )
+    ckpt_path   = weights_dir / "checkpoints" / "AlignScore-base.ckpt"
+    roberta_dir = weights_dir / "roberta-base"
+
+    if not ckpt_path.exists():
+        print(f"ERROR: checkpoint not found: {ckpt_path}", file=sys.stderr)
+        print("       Run: nix build .#alignscore-weights", file=sys.stderr)
+        sys.exit(2)
+    if not roberta_dir.exists():
+        print(f"ERROR: roberta-base not found: {roberta_dir}", file=sys.stderr)
         sys.exit(2)
 
+    # Disable all network access — everything must be in the Nix store already
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    os.environ["HF_DATASETS_OFFLINE"]  = "1"
+
     try:
-        from transformers import pipeline
+        from alignscore import AlignScore
     except ImportError:
-        print("ERROR: transformers not installed", file=sys.stderr)
-        sys.exit(1)
+        print("ERROR: alignscore not installed — add python-alignscore to task env",
+              file=sys.stderr)
+        sys.exit(2)
 
-    report_path = Path(args.report)
-    if not report_path.exists():
-        print(f"ERROR: report file not found: {report_path}", file=sys.stderr)
-        sys.exit(1)
-
-    sources_dir = Path(args.sources)
-    if not sources_dir.exists():
-        print(f"ERROR: sources directory not found: {sources_dir}", file=sys.stderr)
-        sys.exit(1)
-
-    report = report_path.read_text().strip()
-    if not report:
-        print("ERROR: report is empty", file=sys.stderr)
-        sys.exit(1)
-
-    source_files = [
-        f for f in sources_dir.iterdir() if f.suffix in (".txt", ".md") and f.is_file()
+    report_text  = Path(args.report).read_text()
+    sources_dir  = Path(args.sources)
+    source_texts = [
+        f.read_text()
+        for f in sorted(sources_dir.iterdir())
+        if f.suffix in (".txt", ".md")
     ]
-    source_text = " ".join(f.read_text() for f in source_files)
+    if not source_texts:
+        print(f"ERROR: no .txt/.md files in {args.sources}", file=sys.stderr)
+        sys.exit(1)
+    source_combined = " ".join(source_texts)
 
-    sentences = [s.strip() for s in report.split(". ") if s.strip()]
+    sentences = [s.strip() for s in report_text.split(". ") if s.strip()]
     if not sentences:
         print("ERROR: no sentences in report", file=sys.stderr)
         sys.exit(1)
 
-    nli = pipeline("text-classification", model=str(weights_dir), device=-1)
-    scores = []
-    for sent in sentences:
-        result = nli(
-            f"{source_text} [SEP] {sent}", truncation=True, max_length=512
-        )
-        # Extract entailment score; result may be a list of dicts
-        if isinstance(result, list) and isinstance(result[0], dict):
-            entailment = next(
-                (r["score"] for r in result if "entail" in r["label"].lower()), 0.0
-            )
-        else:
-            entailment = 0.0
-        scores.append(entailment)
+    print(f"Loading AlignScore — checkpoint: {ckpt_path.name}, base: {roberta_dir}")
+    scorer = AlignScore(
+        model=str(roberta_dir),   # local path, no HuggingFace download
+        batch_size=8,
+        device="cpu",
+        ckpt_path=str(ckpt_path),
+        evaluation_mode="nli_sp",
+    )
+
+    contexts = [source_combined] * len(sentences)
+    scores   = scorer.score(contexts=contexts, claims=sentences)
 
     mean_score = sum(scores) / len(scores)
-    print(f"mean NLI entailment: {mean_score:.4f} (threshold: {args.threshold})")
+    print(f"\nNLI entailment ({len(sentences)} sentences):")
+    for sent, score in zip(sentences, scores):
+        flag = "✓" if score >= args.threshold else "✗"
+        print(f"  {flag} [{score:.3f}] {sent[:90]}")
+    print(f"\nMean: {mean_score:.4f}  Threshold: {args.threshold}")
 
     if mean_score < args.threshold:
-        print(
-            "FAIL: report not sufficiently entailed by sources", file=sys.stderr
-        )
+        print("FAIL: report not sufficiently entailed by sources", file=sys.stderr)
         sys.exit(1)
-
     print("PASS")
 
 
