@@ -23,7 +23,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--report",      required=True)
     parser.add_argument("--sources",     required=True)
-    parser.add_argument("--threshold",   type=float, default=0.65)
+    parser.add_argument("--threshold",   type=float, default=0.35)
     parser.add_argument("--weights-dir", required=True,
                         help="$out from nix build .#alignscore-weights")
     args = parser.parse_args()

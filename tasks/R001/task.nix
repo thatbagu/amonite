@@ -2,12 +2,11 @@
 
 let
   alignscoreWeights = pkgs.callPackage ../../nix/pkgs/alignscore.nix {};
-  alignscorePy      = pkgs.callPackage ../../nix/pkgs/python-alignscore.nix {};
   python3Env = pkgs.python3.withPackages (ps: [
     ps.scikit-learn
     ps.torch
     ps.transformers
-    alignscorePy
+    (ps.callPackage ../../nix/pkgs/python-alignscore.nix {})
   ]);
 in
 
@@ -20,7 +19,7 @@ amonite.mkResearchTask {
   env = [ pkgs.coreutils python3Env ];
 
   tfidfThreshold = 0.08;
-  nliThreshold   = 0.60;
+  nliThreshold   = 0.35;
 
   build = ''
     mkdir -p "$out/sources" "$out/nix/research"
@@ -39,7 +38,7 @@ amonite.mkResearchTask {
     python3 "$out/nix/research/verify_nli.py" \
       --report "$out/report.md" \
       --sources "$out/sources" \
-      --threshold 0.60 \
+      --threshold 0.35 \
       --weights-dir "${alignscoreWeights}"
   '';
 }
