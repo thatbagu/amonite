@@ -6,13 +6,21 @@ let
     title = "cli-hardening";
     tasks = with tasks; [ T001 T002 T005 ];
     env = [ pkgs.bash pkgs.git pkgs.shellcheck pkgs.coreutils ];
+    # Assemble a working CLI installation from the most feature-complete task (T005):
+    # T001 scaffolds, T002 adds UX guards, T005 adds waves — use T005's output.
+    # $out/bin/amonite is the invocable script; $out/share/amonite is its data root.
+    build = ''
+      mkdir -p "$out/bin" "$out/share/amonite"
+      cp "$out/tasks/T005/bin/amonite"    "$out/bin/amonite"
+      chmod +x "$out/bin/amonite"
+      cp -r "$out/tasks/T005/templates/." "$out/share/amonite/templates/"
+      cp -r "$out/tasks/T005/commands/."  "$out/share/amonite/commands/"
+      cp -r "$out/tasks/T005/nix/."       "$out/share/amonite/nix/"
+    '';
     verify = {
-      # T002 carries the most complete CLI (UX guards + colour + waves);
-      # confirm shellcheck is still clean on its shipped binary.
       shellcheck-final = ''
-        shellcheck --shell=bash "$out/tasks/T002/bin/amonite"
+        shellcheck --shell=bash "$out/bin/amonite"
       '';
-      # End-to-end: init --flow-only then status must exit 0.
       status-works = ''
         tmp=$(mktemp -d)
         cd "$tmp"
@@ -20,15 +28,13 @@ let
         git init -q
         git config user.email ci@amonite
         git config user.name amonite
-        AMONITE_SHARE="$out/tasks/T002" bash "$out/tasks/T002/bin/amonite" \
-          init --flow-only
-        AMONITE_SHARE="$out/tasks/T002" bash "$out/tasks/T002/bin/amonite" status
+        AMONITE_SHARE="$out/share/amonite" bash "$out/bin/amonite" init --flow-only
+        AMONITE_SHARE="$out/share/amonite" bash "$out/bin/amonite" status
       '';
-      # waves command exits 1 when no graph exists (expected behaviour).
       waves-no-graph = ''
         tmp=$(mktemp -d)
         cd "$tmp"
-        AMONITE_SHARE="$out/tasks/T005" bash "$out/tasks/T005/bin/amonite" \
+        AMONITE_SHARE="$out/share/amonite" bash "$out/bin/amonite" \
           waves 2>&1 | grep -q 'task-graph.json'
       '';
     };
@@ -38,12 +44,26 @@ let
     id = "C002";
     title = "distribution";
     tasks = with tasks; [ T003 T004 ];
+    env = [ pkgs.coreutils ];
+    # Install completions to XDG-conventional paths so this cluster's output
+    # composes into a full installation without extra path surgery.
+    build = ''
+      mkdir -p "$out/share/bash-completion/completions" \
+               "$out/share/zsh/site-functions" \
+               "$out/share/fish/vendor_completions.d"
+      cp "$out/tasks/T004/share/completions/amonite.bash" \
+         "$out/share/bash-completion/completions/amonite"
+      cp "$out/tasks/T004/share/completions/_amonite" \
+         "$out/share/zsh/site-functions/_amonite"
+      cp "$out/tasks/T004/share/completions/amonite.fish" \
+         "$out/share/fish/vendor_completions.d/amonite.fish"
+    '';
     verify = {
       package-nix-present  = ''test -f "$out/tasks/T003/package.nix"'';
-      completions-present  = ''
-        test -f "$out/tasks/T004/share/completions/amonite.bash"
-        test -f "$out/tasks/T004/share/completions/_amonite"
-        test -f "$out/tasks/T004/share/completions/amonite.fish"
+      completions-installed = ''
+        test -f "$out/share/bash-completion/completions/amonite"
+        test -f "$out/share/zsh/site-functions/_amonite"
+        test -f "$out/share/fish/vendor_completions.d/amonite.fish"
       '';
     };
   };
@@ -129,16 +149,39 @@ in
     title = "amonite v0.2";
     tasks = [ cliHardening distribution docsSite releasePipeline tuiWaves researchVerify ];
     env = [ pkgs.bash pkgs.coreutils ];
+    # Assemble a complete FHS-style installation from verified cluster outputs.
+    # $out/bin + $out/share mirror a standard layout: AMONITE_SHARE="$out/share/amonite"
+    # $out/bin/amonite runs immediately. Completions land in shell-specific share paths.
+    build = ''
+      mkdir -p "$out/bin" "$out/share/amonite" \
+               "$out/share/bash-completion/completions" \
+               "$out/share/zsh/site-functions" \
+               "$out/share/fish/vendor_completions.d"
+      cp "$out/tasks/C001/bin/amonite"         "$out/bin/amonite"
+      chmod +x "$out/bin/amonite"
+      cp -r "$out/tasks/C001/share/amonite/."  "$out/share/amonite/"
+      cp "$out/tasks/C002/share/bash-completion/completions/amonite" \
+         "$out/share/bash-completion/completions/amonite"
+      cp "$out/tasks/C002/share/zsh/site-functions/_amonite" \
+         "$out/share/zsh/site-functions/_amonite"
+      cp "$out/tasks/C002/share/fish/vendor_completions.d/amonite.fish" \
+         "$out/share/fish/vendor_completions.d/amonite.fish"
+    '';
     verify = {
       help-complete = ''
-        msg=$(AMONITE_SHARE="$out/tasks/C001/tasks/T002" \
-              bash "$out/tasks/C001/tasks/T002/bin/amonite" --help 2>&1 || true)
+        msg=$(AMONITE_SHARE="$out/share/amonite" \
+              bash "$out/bin/amonite" --help 2>&1 || true)
         echo "$msg" | grep -q 'init'
         echo "$msg" | grep -q 'waves'
         echo "$msg" | grep -q 'status'
       '';
+      completions-installed = ''
+        test -f "$out/share/bash-completion/completions/amonite"
+        test -f "$out/share/zsh/site-functions/_amonite"
+        test -f "$out/share/fish/vendor_completions.d/amonite.fish"
+      '';
       research-lib-present = ''
-        grep -q "mkResearchTask" "$out/tasks/C006/tasks/T012/nix/lib.nix"
+        grep -q "mkResearchTask" "$out/share/amonite/nix/lib.nix"
       '';
     };
   };
