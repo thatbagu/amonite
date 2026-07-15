@@ -42,7 +42,15 @@ nix flake lock tasks/TNNN          # one at a time, avoids .git/index.lock
 
 For each new TNNN, write `tasks/TNNN/task.nix`:
 - `env`: exactly the packages listed in tasks.md for this task, no more
-- `verify`: every criterion from tasks.md, mechanical (exit-0 test/grep)
+- `verify`: every criterion from tasks.md — **behavioral by default**:
+  - Executables: invoke them. `"$out/bin/tool" subcmd | grep -q "expected"`
+  - Shell scripts: run them in a tmp dir. Not `grep -q "string" script.sh`.
+  - Go/compiled code: the build already compiled it; run the binary.
+  - Config/YAML: parse with `jq`/`yq`, not grep for key names.
+  - `test -f` is only a prerequisite guard — always follow it with an
+    invocation or parse that confirms the file is correct, not just present.
+  - Raw `grep -q` on source files is a last resort. Before writing one, ask:
+    can I test this by running the artifact instead?
 - `build`: the failing placeholder — **do not implement yet**:
   ```nix
   build = ''echo "TXXX not yet implemented" >&2 && exit 1'';
